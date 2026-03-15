@@ -270,6 +270,11 @@ async def run_task(req: TaskRequest):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "last_prompt": req.prompt,
         "turns": 1,
+        "status": "completed",
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "duration_seconds": round(duration, 2),
+        "task_type": "agent",
+        "log_lines": [],
     }
 
     return TaskResponse(
@@ -287,6 +292,20 @@ MCP_PROFILE_DIR = Path(DATA_DIR) / "browser_session" / "mcp_profile"
 async def run_task_stream(req: TaskRequest):
     """Send a task prompt to the agent and stream the response as SSE."""
     _require_agent()
+
+    session_id = str(uuid.uuid4())[:8]
+    sessions[session_id] = {
+        "session_id": session_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "last_prompt": req.prompt,
+        "turns": 1,
+        "status": "running",
+        "finished_at": None,
+        "duration_seconds": None,
+        "task_type": "agent_stream",
+        "log_lines": [],
+    }
+    start_time = asyncio.get_event_loop().time()
 
     async def event_generator():
         tools = req.allowed_tools or DEFAULT_ALLOWED_TOOLS.split(",")
@@ -309,6 +328,7 @@ async def run_task_stream(req: TaskRequest):
             async for line in proc.stdout:
                 text = line.decode("utf-8", errors="replace").strip()
                 if text:
+                    sessions[session_id]["log_lines"].append(text)
                     yield f"data: {text}\n\n"
         except asyncio.CancelledError:
             proc.kill()
@@ -316,6 +336,10 @@ async def run_task_stream(req: TaskRequest):
         finally:
             stderr_bytes = await proc.stderr.read()
             await proc.wait()
+            duration = asyncio.get_event_loop().time() - start_time
+            sessions[session_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+            sessions[session_id]["duration_seconds"] = round(duration, 2)
+            sessions[session_id]["status"] = "completed" if proc.returncode == 0 else "failed"
             if proc.returncode != 0 and stderr_bytes:
                 err_msg = stderr_bytes.decode("utf-8", errors="replace").strip()
                 import json as _json
@@ -1635,6 +1659,102 @@ async def run_workflow(name: str, req: WorkflowRunRequest):
 
     asyncio.create_task(_run())
     return {"run_id": run_id, "status": "running"}
+
+
+# --- Unified Task Monitoring ---
+
+
+@app.get("/api/tasks")
+async def list_all_tasks():
+    """Unified task list: crawls + workflow runs + agent sessions."""
+    tasks = []
+
+    for t in crawl_tasks.values():
+        tasks.append({
+            "id": t["task_id"],
+            "type": "crawl",
+            "subtype": t.get("mode", "list"),
+            "label": t.get("recipe_path") or ", ".join(t.get("urls", [])) or "-",
+            "status": t["status"],
+            "started_at": t["started_at"],
+            "finished_at": t.get("finished_at"),
+            "log_count": len(t.get("log_lines", [])),
+        })
+
+    for r in workflow_runs.values():
+        tasks.append({
+            "id": r["run_id"],
+            "type": "workflow",
+            "subtype": None,
+            "label": r.get("workflow_name", "-"),
+            "status": r["status"],
+            "started_at": r["started_at"],
+            "finished_at": r.get("finished_at"),
+            "log_count": len(r.get("log_lines", [])),
+        })
+
+    for s in sessions.values():
+        tasks.append({
+            "id": s["session_id"],
+            "type": "agent",
+            "subtype": s.get("task_type"),
+            "label": (s.get("last_prompt") or "-")[:80],
+            "status": s.get("status", "completed"),
+            "started_at": s["created_at"],
+            "finished_at": s.get("finished_at"),
+            "log_count": len(s.get("log_lines", [])),
+        })
+
+    tasks.sort(key=lambda t: t["started_at"] or "", reverse=True)
+    return tasks
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task_detail(task_id: str, tail: int = 200):
+    """Unified task detail: routes to correct backend dict."""
+    if task_id in crawl_tasks:
+        t = crawl_tasks[task_id]
+        return {
+            "id": t["task_id"],
+            "type": "crawl",
+            "subtype": t.get("mode", "list"),
+            "label": t.get("recipe_path") or ", ".join(t.get("urls", [])) or "-",
+            "status": t["status"],
+            "started_at": t["started_at"],
+            "finished_at": t.get("finished_at"),
+            "log_count": len(t.get("log_lines", [])),
+            "log_tail": t.get("log_lines", [])[-tail:],
+        }
+
+    if task_id in workflow_runs:
+        r = workflow_runs[task_id]
+        return {
+            "id": r["run_id"],
+            "type": "workflow",
+            "subtype": None,
+            "label": r.get("workflow_name", "-"),
+            "status": r["status"],
+            "started_at": r["started_at"],
+            "finished_at": r.get("finished_at"),
+            "log_count": len(r.get("log_lines", [])),
+            "log_tail": r.get("log_lines", [])[-tail:],
+        }
+
+    if task_id in sessions:
+        s = sessions[task_id]
+        return {
+            "id": s["session_id"],
+            "type": "agent",
+            "subtype": s.get("task_type"),
+            "label": s.get("last_prompt", "-"),
+            "status": s.get("status", "completed"),
+            "started_at": s["created_at"],
+            "finished_at": s.get("finished_at"),
+            "log_count": len(s.get("log_lines", [])),
+            "log_tail": s.get("log_lines", [])[-tail:],
+        }
+
+    raise HTTPException(status_code=404, detail="Task not found")
 
 
 # --- Output Files ---
