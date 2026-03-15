@@ -64,6 +64,30 @@ mcp_servers:
 
 Hermes will discover all tools at startup. Use `/reload-mcp` in Hermes to refresh after config changes.
 
+### CLI (Any Agent with Shell Access)
+
+For agents that prefer shell commands over MCP, or for manual use and scripting:
+
+```bash
+# Set once
+export CRAWLER_API_URL=http://<container-ip>:8080
+export CRAWLER_API_KEY=<your-key>
+
+# Then use
+python crawler_cli.py health
+python crawler_cli.py recipes list
+python crawler_cli.py crawl run example_quotes.yaml
+python crawler_cli.py browser open
+python crawler_cli.py browser navigate https://youtube.com
+python crawler_cli.py browser snapshot
+python crawler_cli.py browser click --text "Notifications"
+python crawler_cli.py browser close
+python crawler_cli.py login open https://youtube.com --label YouTube
+python crawler_cli.py login save
+```
+
+`crawler_cli.py` is a single file with zero dependencies — copy it anywhere and point it at the API.
+
 ### Any MCP-Compatible Agent
 
 Any agent that supports remote MCP servers over HTTP can connect to:
@@ -74,7 +98,7 @@ Header: X-API-Key: <your-key>
 Body: JSON-RPC (MCP protocol)
 ```
 
-### Available MCP Tools
+### Available Tools (MCP + CLI)
 
 Once connected, the agent gets these tools:
 
@@ -158,6 +182,7 @@ validate_recipe.py    # Recipe schema validator
 api_server.py         # FastAPI server (port 8080) — REST API + MCP endpoint
 data_server.py        # FastAPI file server for output (port 8081)
 mcp_server.py         # Standalone MCP bridge (stdio, for Claude Code)
+crawler_cli.py        # CLI tool (for shell-based agents or manual use)
 browser_helper.py     # CLI for browser interactions
 workflow_engine.py    # Workflow replay engine
 workflow_models.py    # Workflow data models (Pydantic)
