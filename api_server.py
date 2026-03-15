@@ -670,6 +670,7 @@ async def list_saved_sessions():
 # interactively: navigate, click, type, take snapshots, etc.
 
 browser_session: dict = {"proc": None, "status": "closed"}
+browser_recording: dict = {"active": False, "steps": [], "seq": 0}
 
 
 def _browser_script() -> str:
@@ -864,11 +865,44 @@ async def _browser_cmd(cmd: dict) -> dict:
         proc.stdin.write((json.dumps(cmd) + "\n").encode())
         await proc.stdin.drain()
         line = await asyncio.wait_for(proc.stdout.readline(), timeout=120)
-        return json.loads(line.decode("utf-8", errors="replace").strip())
+        result = json.loads(line.decode("utf-8", errors="replace").strip())
+
+        # Record action if recording is active
+        action = cmd.get("action", "")
+        if browser_recording["active"] and action not in ("snapshot", "screenshot", "get_links", "save_cookies"):
+            browser_recording["seq"] += 1
+            step = {
+                "seq": browser_recording["seq"],
+                "action": action,
+                "params": {k: v for k, v in cmd.items() if k != "action"},
+                "description": _describe_step(action, cmd),
+            }
+            browser_recording["steps"].append(step)
+
+        return result
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Browser command timed out")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Browser command failed: {e}")
+
+
+def _describe_step(action: str, cmd: dict) -> str:
+    """Generate a human-readable description for a recorded step."""
+    if action == "navigate":
+        return f"Navigate to {cmd.get('url', '?')}"
+    if action == "click":
+        return f"Click '{cmd.get('text', cmd.get('selector', '?'))}'"
+    if action == "type":
+        return f"Type '{cmd.get('text', '')[:40]}' into {cmd.get('selector', '?')}"
+    if action == "press_key":
+        return f"Press {cmd.get('key', '?')}"
+    if action == "scroll":
+        return f"Scroll {cmd.get('direction', 'down')} {cmd.get('amount', 500)}px"
+    if action == "evaluate":
+        return "Run JavaScript"
+    if action == "wait":
+        return f"Wait {cmd.get('seconds', 2)}s"
+    return action
 
 
 @app.post("/api/browser/navigate")
@@ -962,7 +996,66 @@ async def browser_status():
     alive = proc is not None and proc.returncode is None
     if not alive:
         browser_session["status"] = "closed"
-    return {"active": alive, "status": browser_session["status"]}
+    return {
+        "active": alive,
+        "status": browser_session["status"],
+        "recording": browser_recording["active"],
+        "recorded_steps": len(browser_recording["steps"]),
+    }
+
+
+@app.post("/api/browser/record/start")
+async def browser_record_start():
+    """Start recording browser actions into a replayable workflow."""
+    browser_recording["active"] = True
+    browser_recording["steps"] = []
+    browser_recording["seq"] = 0
+    return {"status": "recording", "message": "Recording started. All browser actions will be captured."}
+
+
+@app.post("/api/browser/record/stop")
+async def browser_record_stop():
+    """Stop recording and return the captured steps."""
+    browser_recording["active"] = False
+    steps = browser_recording["steps"]
+    return {
+        "status": "stopped",
+        "step_count": len(steps),
+        "steps": steps,
+    }
+
+
+@app.post("/api/browser/record/save")
+async def browser_record_save(req: dict):
+    """Save recorded steps as a replayable workflow."""
+    name = req.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Workflow name is required")
+
+    steps = browser_recording["steps"]
+    if not steps:
+        raise HTTPException(status_code=400, detail="No steps recorded. Start recording and perform actions first.")
+
+    safe = name.replace("/", "_").replace("..", "_")
+    path = WORKFLOWS_DIR / f"{safe}.json"
+
+    data = {
+        "name": name,
+        "description": req.get("description", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_from": "browser_session",
+        "input_schema": {},
+        "steps": steps,
+        "tags": req.get("tags", []),
+    }
+    path.write_text(json.dumps(data, indent=2))
+
+    # Clear recording
+    browser_recording["steps"] = []
+    browser_recording["seq"] = 0
+    browser_recording["active"] = False
+
+    return {"status": "saved", "name": name, "step_count": len(steps)}
 
 
 # --- Recipe CRUD ---
@@ -1691,6 +1784,16 @@ async def _mcp_call_tool(name: str, args: dict):
 
         elif name == "browser_status":
             return await browser_status()
+
+        # --- Recording tools ---
+        elif name == "browser_record_start":
+            return await browser_record_start()
+
+        elif name == "browser_record_stop":
+            return await browser_record_stop()
+
+        elif name == "browser_record_save":
+            return await browser_record_save(args)
 
         else:
             return {"error": f"Unknown tool: {name}"}

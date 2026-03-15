@@ -322,8 +322,31 @@ TOOLS = [
     },
     {
         "name": "browser_status",
-        "description": "Check if a browser session is currently active.",
+        "description": "Check if a browser session is currently active and whether recording is on.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_record_start",
+        "description": "Start recording browser actions. All subsequent browser commands (navigate, click, type, etc.) will be captured as replayable workflow steps.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_record_stop",
+        "description": "Stop recording and return the captured steps.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_record_save",
+        "description": "Save the recorded steps as a named workflow. The workflow can be replayed later with crawler_run_workflow without any AI.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Workflow name (used as filename)"},
+                "description": {"type": "string", "description": "What this workflow does"},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tags"},
+            },
+            "required": ["name"],
+        },
     },
 ]
 
