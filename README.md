@@ -9,7 +9,7 @@ A flexible web crawling and browser automation platform with CloudFlare bypass, 
 - **CloudFlare bypass** — dual-engine approach using curl-cffi and Playwright
 - **Anti-detection** — webdriver property override, randomized viewport, human-like delays
 - **Browser automation tools** — CLI helper and workflow replay engine
-- **HTTP API** — FastAPI server for remote task execution via Claude Code
+- **HTTP API** — FastAPI server for remote task execution via AI agent
 - **Data server** — file server with directory listing and JSON API for crawled output
 - **Session persistence** — saved cookies for authenticated scraping
 - **Resume capability** — state tracking to pick up interrupted crawls
@@ -40,7 +40,7 @@ data_server.py        # FastAPI file server for output (port 8081)
 browser_helper.py     # CLI for browser interactions
 workflow_engine.py    # Workflow replay engine
 workflow_models.py    # Workflow data models (Pydantic)
-workflow_recorder.py  # Records Claude MCP calls into replayable workflows
+workflow_recorder.py  # Records agent MCP calls into replayable workflows
 static/index.html     # Dashboard UI for the API server
 recipes/              # YAML scraping recipes
 output/               # Crawled data (JSONL, gitignored)
@@ -96,14 +96,14 @@ python browser_helper.py evaluate https://example.com "document.title"
 
 ## API Server
 
-The API server wraps Claude Code behind an HTTP interface, allowing n8n workflows, other LLMs, or any HTTP client to send tasks.
+The API server wraps an AI agent behind an HTTP interface, allowing n8n workflows, other LLMs, or any HTTP client to send tasks.
 
 ```bash
 # Start the server
 python -m uvicorn api_server:app --host 0.0.0.0 --port 8080
 
 # Or via systemd
-systemctl start claude-api
+systemctl start crawler-api
 ```
 
 ### Endpoints
@@ -111,7 +111,7 @@ systemctl start claude-api
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
-| `POST` | `/task` | Submit a Claude Code task |
+| `POST` | `/task` | Submit an agent task |
 | `GET` | `/task/{id}` | Get task status and result |
 | `GET` | `/tasks` | List recent tasks |
 | `POST` | `/crawl` | Run a recipe-based crawl |
@@ -142,7 +142,7 @@ Serves the `output/` directory over HTTP with a browsable UI and JSON API.
 python data_server.py
 
 # Or via systemd
-systemctl start claude-data
+systemctl start crawler-data
 ```
 
 ### Endpoints
@@ -157,7 +157,7 @@ systemctl start claude-data
 
 Record browser interactions as replayable workflows:
 
-1. **Record** — The workflow recorder captures Playwright MCP tool calls from Claude CLI stream-json output and converts them into step sequences.
+1. **Record** — The workflow recorder captures Playwright MCP tool calls from agent CLI stream-json output and converts them into step sequences.
 2. **Replay** — The workflow engine executes saved workflows with template interpolation (`{{input.field_name}}`), human-like delays, and anti-detection.
 
 Workflow files are JSON with a defined schema (see `workflow_models.py`).
@@ -189,10 +189,10 @@ Environment variables for servers:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_BIN` | `claude` | Path to Claude CLI |
-| `CLAUDE_WORKING_DIR` | `/opt/crawler` | Working directory for tasks |
-| `CLAUDE_DATA_DIR` | `/opt/crawler/output` | Directory served by data server |
-| `CLAUDE_DATA_PORT` | `8081` | Data server port |
+| `AGENT_BIN` | `claude` | Path to agent CLI binary |
+| `CRAWLER_WORKING_DIR` | `/opt/crawler` | Working directory for tasks |
+| `CRAWLER_DATA_DIR` | `/opt/crawler/output` | Directory served by data server |
+| `CRAWLER_DATA_PORT` | `8081` | Data server port |
 
 ## Authenticated Scraping
 

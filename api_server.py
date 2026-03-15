@@ -1,13 +1,13 @@
 """
-Claude Code API Server
+Crawler API Server
 
-FastAPI server that accepts task prompts via HTTP POST, executes `claude -p`,
+FastAPI server that accepts task prompts via HTTP POST, executes an AI agent CLI,
 and returns results. Designed so other LLMs, n8n, or any HTTP client can
-communicate with Claude Code.
+submit automation tasks.
 
 Usage:
     python -m uvicorn api_server:app --host 0.0.0.0 --port 8080
-    # or via systemd: systemctl start claude-api
+    # or via systemd: systemctl start crawler-api
 """
 
 import asyncio
@@ -28,25 +28,26 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 app = FastAPI(
-    title="Claude Code API",
-    description="HTTP API for sending tasks to Claude Code",
+    title="Crawler API",
+    description="HTTP API for sending tasks to an AI agent",
     version="1.0.0",
 )
 
 # --- Configuration ---
 
-CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
-WORKING_DIR = os.environ.get("CLAUDE_WORKING_DIR", "/opt/crawler")
-DATA_DIR = os.environ.get("CLAUDE_DATA_DIR", "/opt/crawler/output")
+AGENT_BIN = os.environ.get("AGENT_BIN", "claude")
+WORKING_DIR = os.environ.get("CRAWLER_WORKING_DIR", "/opt/crawler")
+DATA_DIR = os.environ.get("CRAWLER_DATA_DIR", "/opt/crawler/output")
 DEFAULT_ALLOWED_TOOLS = os.environ.get(
-    "CLAUDE_DEFAULT_TOOLS",
+    "AGENT_DEFAULT_TOOLS",
     "Bash,Read,Write,Edit,Glob,Grep,mcp__playwright__browser_navigate,"
     "mcp__playwright__browser_screenshot,mcp__playwright__browser_click,"
     "mcp__playwright__browser_type,mcp__playwright__browser_snapshot",
 )
 MAX_TIMEOUT = 600  # 10 minutes
-RECIPES_DIR = Path("/opt/crawler/recipes")
-VENV_PYTHON = "/opt/crawler/venv/bin/python"
+RECIPES_DIR = Path(os.environ.get("CRAWLER_RECIPES_DIR", os.path.join(WORKING_DIR, "recipes")))
+VENV_PYTHON = os.environ.get("CRAWLER_VENV_PYTHON", sys.executable)
+XDISPLAY = os.environ.get("DISPLAY", ":99")
 
 # --- In-memory storage ---
 
@@ -128,7 +129,7 @@ class FullCrawlRequest(BaseModel):
 # --- Helpers ---
 
 
-async def run_claude(
+async def run_agent(
     prompt: str,
     timeout: int = 120,
     allowed_tools: Optional[list[str]] = None,
@@ -137,11 +138,11 @@ async def run_claude(
     system_prompt: Optional[str] = None,
 ) -> tuple[str, str]:
     """
-    Run claude CLI and return (output_text, session_id).
+    Run agent CLI and return (output_text, session_id).
     """
     tools = allowed_tools or DEFAULT_ALLOWED_TOOLS.split(",")
 
-    cmd = [CLAUDE_BIN, "-p", prompt, "--output-format", "json"]
+    cmd = [AGENT_BIN, "-p", prompt, "--output-format", "json"]
 
     for tool in tools:
         cmd.extend(["--allowedTools", tool.strip()])
@@ -159,7 +160,7 @@ async def run_claude(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": ":99"},
+        env={**os.environ, "DISPLAY": XDISPLAY},
     )
 
     try:
@@ -169,7 +170,7 @@ async def run_claude(
     except asyncio.TimeoutError:
         proc.kill()
         await proc.communicate()
-        raise HTTPException(status_code=504, detail="Claude task timed out")
+        raise HTTPException(status_code=504, detail="Agent task timed out")
 
     output = stdout.decode("utf-8", errors="replace").strip()
 
@@ -186,7 +187,7 @@ async def run_claude(
         err = stderr.decode("utf-8", errors="replace").strip()
         raise HTTPException(
             status_code=500,
-            detail=f"Claude exited with code {proc.returncode}: {err}",
+            detail=f"Agent exited with code {proc.returncode}: {err}",
         )
 
     return result_text, new_session_id
@@ -202,9 +203,9 @@ async def health():
 
 @app.post("/task", response_model=TaskResponse)
 async def run_task(req: TaskRequest):
-    """Send a task prompt to Claude and get the response."""
+    """Send a task prompt to the agent and get the response."""
     start = asyncio.get_event_loop().time()
-    result, session_id = await run_claude(
+    result, session_id = await run_agent(
         prompt=req.prompt,
         timeout=req.timeout,
         allowed_tools=req.allowed_tools,
@@ -232,11 +233,11 @@ MCP_PROFILE_DIR = Path(DATA_DIR) / "browser_session" / "mcp_profile"
 
 @app.post("/task/stream")
 async def run_task_stream(req: TaskRequest):
-    """Send a task prompt to Claude and stream the response as SSE."""
+    """Send a task prompt to the agent and stream the response as SSE."""
 
     async def event_generator():
         tools = req.allowed_tools or DEFAULT_ALLOWED_TOOLS.split(",")
-        cmd = [CLAUDE_BIN, "-p", req.prompt, "--output-format", "stream-json", "--verbose"]
+        cmd = [AGENT_BIN, "-p", req.prompt, "--output-format", "stream-json", "--verbose"]
         for tool in tools:
             cmd.extend(["--allowedTools", tool.strip()])
         if req.system_prompt:
@@ -247,7 +248,7 @@ async def run_task_stream(req: TaskRequest):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=WORKING_DIR,
-            env={**os.environ, "DISPLAY": ":99"},
+            env={**os.environ, "DISPLAY": XDISPLAY},
             limit=10 * 1024 * 1024,  # 10MB line buffer for large payloads (screenshots)
         )
 
@@ -283,7 +284,7 @@ async def continue_task(req: ContinueRequest):
         raise HTTPException(status_code=404, detail="Session not found")
 
     start = asyncio.get_event_loop().time()
-    result, session_id = await run_claude(
+    result, session_id = await run_agent(
         prompt=req.prompt,
         timeout=req.timeout,
         session_id=req.session_id,
@@ -335,11 +336,11 @@ with sync_playwright() as p:
 """
 
     proc = await asyncio.create_subprocess_exec(
-        "/opt/crawler/venv/bin/python", "-c", script,
+        VENV_PYTHON, "-c", script,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": ":99"},
+        env={**os.environ, "DISPLAY": XDISPLAY},
     )
 
     # Wait for the page to load (up to 30s)
@@ -350,7 +351,12 @@ with sync_playwright() as p:
                 break
     except asyncio.TimeoutError:
         proc.kill()
-        raise HTTPException(status_code=500, detail="Browser failed to open page")
+        stderr = await proc.stderr.read()
+        err_msg = stderr.decode("utf-8", errors="replace").strip()
+        detail = "Browser failed to open page"
+        if err_msg:
+            detail += f": {err_msg}"
+        raise HTTPException(status_code=500, detail=detail)
 
     return AuthPrepareResponse(
         status="ready",
@@ -405,7 +411,7 @@ with sync_playwright() as p:
     vw = 1280 + random.randint(-50, 50)
     vh = 900 + random.randint(-50, 50)
 
-    # Use persistent context with same profile as the Agent MCP browser
+    # Use persistent context with same Chrome profile as the MCP browser
     ctx = p.chromium.launch_persistent_context(
         user_data_dir=str(MCP_PROFILE),
         headless=False,
@@ -467,7 +473,7 @@ with sync_playwright() as p:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": ":99"},
+        env={**os.environ, "DISPLAY": XDISPLAY},
     )
 
     # Wait for the page to load
@@ -478,8 +484,13 @@ with sync_playwright() as p:
                 break
     except asyncio.TimeoutError:
         proc.kill()
+        stderr = await proc.stderr.read()
         await proc.wait()
-        raise HTTPException(status_code=500, detail="Browser failed to open")
+        err_msg = stderr.decode("utf-8", errors="replace").strip()
+        detail = "Browser failed to open"
+        if err_msg:
+            detail += f": {err_msg}"
+        raise HTTPException(status_code=500, detail=detail)
 
     login_sessions[session_id] = {
         "session_id": session_id,
@@ -723,7 +734,7 @@ async def _run_crawl(task_id: str, recipe_path: str, headless: bool):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": ":99"},
+        env={**os.environ, "DISPLAY": XDISPLAY},
     )
 
     crawl_tasks[task_id]["pid"] = proc.pid
@@ -763,7 +774,7 @@ async def _run_full_crawl(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": ":99"},
+        env={**os.environ, "DISPLAY": XDISPLAY},
     )
 
     crawl_tasks[task_id]["pid"] = proc.pid
@@ -865,7 +876,7 @@ async def get_crawl_task(task_id: str, tail: int = 50):
 
 # --- Workflow Management ---
 
-WORKFLOWS_DIR = Path("/opt/crawler/workflows")
+WORKFLOWS_DIR = Path(os.path.join(WORKING_DIR, "workflows"))
 WORKFLOWS_DIR.mkdir(exist_ok=True)
 
 workflow_runs: dict[str, dict] = {}
@@ -1004,7 +1015,7 @@ RECORDING_TOOLS = [
 @app.post("/api/workflows/record")
 async def record_workflow(req: WorkflowRecordRequest):
     """
-    Start an AI-driven recording session. Claude performs the task using
+    Start an AI-driven recording session. The agent performs the task using
     Playwright MCP tools. Returns SSE stream with progress, then final
     workflow steps.
     """
@@ -1012,7 +1023,7 @@ async def record_workflow(req: WorkflowRecordRequest):
 
     async def event_generator():
         cmd = [
-            CLAUDE_BIN, "-p", req.prompt,
+            AGENT_BIN, "-p", req.prompt,
             "--output-format", "stream-json",
             "--verbose",
             "--append-system-prompt", RECORDING_SYSTEM_PROMPT,
@@ -1025,7 +1036,7 @@ async def record_workflow(req: WorkflowRecordRequest):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=WORKING_DIR,
-            env={**os.environ, "DISPLAY": ":99"},
+            env={**os.environ, "DISPLAY": XDISPLAY},
         )
 
         raw_lines: list[str] = []
@@ -1202,7 +1213,7 @@ async def dashboard_redirect():
 
 # --- Static files mount (must be last) ---
 
-static_dir = Path("/opt/crawler/static")
+static_dir = Path(os.path.join(WORKING_DIR, "static"))
 static_dir.mkdir(exist_ok=True)
 app.mount("/dashboard", StaticFiles(directory=str(static_dir), html=True), name="dashboard")
 
@@ -1210,5 +1221,5 @@ app.mount("/dashboard", StaticFiles(directory=str(static_dir), html=True), name=
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("CLAUDE_API_PORT", "8080"))
+    port = int(os.environ.get("CRAWLER_API_PORT", "8080"))
     uvicorn.run(app, host="0.0.0.0", port=port)

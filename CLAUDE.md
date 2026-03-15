@@ -1,16 +1,16 @@
-# Crawler Project — Claude Code Context
+# Crawler Project Context
 
 ## Overview
 Web automation platform at `/opt/crawler/` on a Proxmox LXC container. Three capabilities:
 1. **Full HTML Crawl** — recursive page download (`--mode crawl`)
 2. **List Crawl** — recipe-driven link discovery (`--mode list`)
-3. **AI-Recorded Workflows** — describe a task in English, Claude performs it via Playwright, steps are recorded as a replayable workflow (no AI needed on replay)
+3. **AI-Recorded Workflows** — describe a task in English, the agent performs it via Playwright, steps are recorded as a replayable workflow (no AI needed on replay)
 
 Uses Playwright 1.58+ and curl-cffi for scraping with CloudFlare bypass. YAML recipe system for defining scraping targets. Integrated with n8n for scheduled runs via SSH.
 
 ## Environment
 - **Python**: 3.11 (venv at `/opt/crawler/venv/`)
-- **Node.js**: 22 LTS (for Playwright MCP server)
+- **Node.js**: 22 LTS (for Playwright MCP server, if using agent workflow recording)
 - **Display**: Xvfb on `:99` (for headless browser automation, VNC for auth)
 - **Activate venv**: `source /opt/crawler/venv/bin/activate`
 
@@ -23,12 +23,11 @@ Uses Playwright 1.58+ and curl-cffi for scraping with CloudFlare bypass. YAML re
 | `crawler_config.py` | Config: URLs, depth, domains, headless mode, rate limits |
 | `recipe_loader.py` | Loads and validates YAML recipe files |
 | `validate_recipe.py` | CLI tool to validate recipe YAML |
-| `scrape_metrics.py` | Social media metrics scraper (Instagram, Facebook, YouTube, LinkedIn) |
 | `browser_helper.py` | CLI for browser actions: navigate, click, type, screenshot, etc. |
 | `api_server.py` | FastAPI HTTP API — dashboard, crawl control, workflow management |
 | `data_server.py` | HTTP file server for output data |
 | `workflow_models.py` | Pydantic models: Workflow, WorkflowStep, WorkflowInputField |
-| `workflow_recorder.py` | Parses Claude CLI stream-json output → replayable workflow steps |
+| `workflow_recorder.py` | Parses agent CLI stream-json output → replayable workflow steps |
 | `workflow_engine.py` | Replays workflows via Playwright sync API (no AI needed) |
 | `workflows/` | Saved workflow JSON files (gitignored) |
 
@@ -106,25 +105,24 @@ curl -X POST http://localhost:8080/auth-prepare \
 curl http://localhost:8080/health
 ```
 
-Service: `systemctl start claude-api`
+Service: `systemctl start crawler-api`
 
 ## Data Server (port 8081)
 
 ```bash
 curl http://localhost:8081/api/files          # List all output files as JSON
-curl http://localhost:8081/files/cat-brown/facebook_posts.jsonl  # Download file
+curl http://localhost:8081/files/my-project/items.jsonl  # Download file
 ```
 
 Browse at `http://<host>:8081/` for HTML directory listing.
-Service: `systemctl start claude-data`
+Service: `systemctl start crawler-data`
 
 ## n8n Integration
-- SSH scripts: `run_cat_brown.sh`, `run_cat_brown_facebook.sh`, `run_cat_brown_metrics.sh`
+- SSH scripts in repo root for scheduled recipe execution
 - HTTP API: `POST http://<crawler-ip>:8080/task` with JSON body from n8n HTTP Request node
-- Daily Facebook scrape at 6 AM, metrics at 8 PM
 
 ## Cookie/Session Management
-- Cookies saved at `output/browser_session/cookies.json` (crawler) and `output/browser_session/metrics_cookies.json` (metrics)
+- Cookies saved at `output/browser_session/cookies.json`
 - For authenticated sites (Facebook, etc.), first run with `--visible` flag and log in via VNC
 - Or use `POST /auth-prepare` endpoint to open a login page on VNC display
 
@@ -178,9 +176,10 @@ pip install -r requirements-api.txt
 playwright install chromium
 
 # Start services
-systemctl start xvfb x11vnc websockify claude-api claude-data
+systemctl start xvfb x11vnc websockify crawler-api crawler-data
 
-# Claude MCP setup (for workflow recording)
+# Agent MCP setup (for workflow recording — uses Claude Code CLI as default agent)
+# Replace with your preferred agent CLI if different
 claude mcp add playwright npx @playwright/mcp@latest -e DISPLAY=:99
 ```
 

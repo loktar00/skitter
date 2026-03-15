@@ -1,17 +1,17 @@
 """
-Claude Data File Server
+Crawler Data File Server
 
 Lightweight HTTP file server that serves the crawler output directory
 with directory listing, file downloads, and a JSON API.
 
 Usage:
     python data_server.py
-    # or via systemd: systemctl start claude-data
+    # or via systemd: systemctl start crawler-data
 
 Environment variables:
-    CLAUDE_DATA_DIR   - Directory to serve (default: /opt/crawler/output)
-    CLAUDE_DATA_MOUNT - Optional mount/symlink point for remote access
-    CLAUDE_DATA_PORT  - Port to listen on (default: 8081)
+    CRAWLER_DATA_DIR   - Directory to serve (default: /opt/crawler/output)
+    CRAWLER_DATA_MOUNT - Optional mount/symlink point for remote access
+    CRAWLER_DATA_PORT  - Port to listen on (default: 8081)
 """
 
 import os
@@ -25,8 +25,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
-DATA_DIR = Path(os.environ.get("CLAUDE_DATA_DIR", "/opt/crawler/output"))
-DATA_MOUNT = os.environ.get("CLAUDE_DATA_MOUNT")
+DATA_DIR = Path(os.environ.get("CRAWLER_DATA_DIR", "/opt/crawler/output"))
+DATA_MOUNT = os.environ.get("CRAWLER_DATA_MOUNT")
 
 
 @asynccontextmanager
@@ -37,7 +37,7 @@ async def lifespan(app):
 
 
 app = FastAPI(
-    title="Claude Data Server",
+    title="Crawler Data Server",
     description="HTTP file server for crawler output data",
     version="1.0.0",
     lifespan=lifespan,
@@ -199,5 +199,5 @@ def _fmt_size(size: int) -> str:
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("CLAUDE_DATA_PORT", "8081"))
+    port = int(os.environ.get("CRAWLER_DATA_PORT", "8081"))
     uvicorn.run(app, host="0.0.0.0", port=port)

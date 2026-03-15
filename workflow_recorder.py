@@ -1,5 +1,5 @@
 """
-Workflow Recorder — parses Claude CLI stream-json output to extract
+Workflow Recorder — parses agent CLI stream-json output to extract
 Playwright MCP tool calls and convert them into replayable workflow steps.
 """
 

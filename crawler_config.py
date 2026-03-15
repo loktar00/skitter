@@ -5,8 +5,8 @@ Configuration settings for generic web crawler.
 import os
 
 # Output directory - configurable via env var for API/data server integration
-# If CLAUDE_DATA_DIR is set, output goes there instead of ./output/
-OUTPUT_DIR = os.environ.get("CLAUDE_DATA_DIR", "output")
+# If CRAWLER_DATA_DIR is set, output goes there instead of ./output/
+OUTPUT_DIR = os.environ.get("CRAWLER_DATA_DIR", "output")
 
 # Starting URLs - list of URLs to begin crawling from
 # Can be empty if URLs are provided via command line
