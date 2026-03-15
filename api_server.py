@@ -22,32 +22,44 @@ from typing import Optional
 import mimetypes
 
 import yaml
-from fastapi import FastAPI, HTTPException, Security, Depends
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # --- API Key Auth ---
 
 API_KEY = os.environ.get("CRAWLER_API_KEY", "")
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-async def verify_api_key(key: str = Security(_api_key_header)):
-    """If CRAWLER_API_KEY is set, require it on all API requests."""
-    if not API_KEY:
-        return  # No key configured — allow all requests
-    if key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-
 
 app = FastAPI(
     title="Crawler API",
     description="HTTP API for sending tasks to an AI agent",
     version="1.0.0",
-    dependencies=[Depends(verify_api_key)],
 )
+
+# Paths that don't require an API key (dashboard, static, health)
+_PUBLIC_PREFIXES = ("/dashboard", "/health")
+
+
+@app.middleware("http")
+async def api_key_middleware(request, call_next):
+    """Require X-API-Key header on API routes when CRAWLER_API_KEY is set."""
+    if not API_KEY:
+        return await call_next(request)
+
+    path = request.url.path
+    # Allow dashboard, static files, and health without auth
+    if any(path.startswith(p) for p in _PUBLIC_PREFIXES) or path == "/":
+        return await call_next(request)
+
+    key = request.headers.get("X-API-Key", "")
+    if key != API_KEY:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing API key"},
+        )
+
+    return await call_next(request)
 
 # --- Configuration ---
 

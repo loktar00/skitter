@@ -775,11 +775,26 @@ function toast(msg, type = 'success') {
 }
 
 // --- API helpers ---
+function getApiKey() {
+  return localStorage.getItem('crawler_api_key') || '';
+}
+function setApiKey(key) {
+  localStorage.setItem('crawler_api_key', key);
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
+  const apiKey = getApiKey();
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (apiKey) headers['X-API-Key'] = apiKey;
+  const res = await fetch(API + path, { ...opts, headers });
+  if (res.status === 401) {
+    const key = prompt('API key required. Enter your CRAWLER_API_KEY:');
+    if (key) {
+      setApiKey(key);
+      return api(path, opts); // retry with key
+    }
+    throw new Error('API key required');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || 'Request failed');
@@ -1106,9 +1121,11 @@ async function startRecording() {
   recordedMeta = null;
 
   try {
+    const wfHeaders = { 'Content-Type': 'application/json' };
+    if (getApiKey()) wfHeaders['X-API-Key'] = getApiKey();
     const res = await fetch(API + '/api/workflows/record', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: wfHeaders,
       body: JSON.stringify({ prompt, name, description: desc }),
     });
 
@@ -1586,9 +1603,11 @@ async function agentRun() {
 
   let ranOk = false;
   try {
+    const agentHeaders = { 'Content-Type': 'application/json' };
+    if (getApiKey()) agentHeaders['X-API-Key'] = getApiKey();
     const res = await fetch(API + '/task/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: agentHeaders,
       body: JSON.stringify({
         prompt,
         allowed_tools: AGENT_TOOLS,
