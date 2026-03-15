@@ -1,8 +1,15 @@
 #!/bin/bash
-# Crawler Container Setup Script
-# Run inside a Proxmox LXC container (or any Debian/Ubuntu server):
-#   scp setup-crawler.sh root@<container-ip>:/root/
-#   ssh root@<container-ip> 'bash /root/setup-crawler.sh'
+# =============================================================================
+# Crawler Setup Script
+#
+# Run this directly on your container to install everything from scratch.
+# Safe to re-run — it will pull the latest code and restart services.
+#
+# Usage:
+#   curl -sL https://raw.githubusercontent.com/loktar00/crawler/main/setup-crawler.sh | bash
+#   # or if already on the machine:
+#   bash setup-crawler.sh
+# =============================================================================
 
 set -e
 
@@ -12,78 +19,88 @@ DISPLAY_NUM="${DISPLAY_NUM:-99}"
 API_PORT="${CRAWLER_API_PORT:-8080}"
 DATA_PORT="${CRAWLER_DATA_PORT:-8081}"
 
-echo "=== Crawler Container Setup ==="
-echo "Install dir: $CRAWLER_DIR"
+# Get container IP for final output
+CONTAINER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+
+echo ""
+echo "============================================"
+echo "  Crawler Setup"
+echo "============================================"
+echo ""
+echo "  Install dir:  $CRAWLER_DIR"
+echo "  API port:     $API_PORT"
+echo "  Data port:    $DATA_PORT"
+echo "  Container IP: ${CONTAINER_IP:-unknown}"
+echo ""
+echo "--------------------------------------------"
 echo ""
 
-# 1. System updates
-echo "[1/12] System updates..."
-apt update && apt upgrade -y
+# Stop existing services if re-running
+if systemctl is-active --quiet crawler-api 2>/dev/null; then
+    echo "Stopping existing crawler services..."
+    systemctl stop crawler-api crawler-data 2>/dev/null || true
+fi
+# Clean up old claude-named services if they exist
+if [ -f /etc/systemd/system/claude-api.service ]; then
+    echo "Removing old claude-api/claude-data services..."
+    systemctl stop claude-api claude-data 2>/dev/null || true
+    systemctl disable claude-api claude-data 2>/dev/null || true
+    rm -f /etc/systemd/system/claude-api.service /etc/systemd/system/claude-data.service
+fi
 
-# 2. Install Python 3.11+
-echo "[2/12] Installing Python 3.11..."
-apt install -y python3.11 python3.11-venv python3-pip git curl
+# 1. System packages
+echo "[1/9] Installing system packages..."
+apt update -qq
+apt install -y -qq \
+    python3.11 python3.11-venv python3-pip git curl \
+    xvfb x11vnc fluxbox \
+    libgtk-3-0 libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 \
+    libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
+    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+    libpango-1.0-0 libcairo2 fonts-liberation \
+    > /dev/null 2>&1
+echo "  Done."
 
-# 3. Install Playwright browser dependencies
-echo "[3/12] Installing browser dependencies..."
-apt install -y \
-    libgtk-3-0 \
-    libnotify-dev \
-    libgconf-2-4 \
-    libnss3 \
-    libxss1 \
-    libasound2 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    fonts-liberation
-
-# 4. Install Xvfb for virtual display
-echo "[4/12] Installing Xvfb and VNC..."
-apt install -y xvfb x11vnc fluxbox
-
-# 5. Clone or update the crawler repository
-echo "[5/12] Setting up crawler at $CRAWLER_DIR..."
-if [ -d "$CRAWLER_DIR" ]; then
-    echo "  $CRAWLER_DIR already exists, pulling latest..."
-    cd "$CRAWLER_DIR" && git pull origin main
+# 2. Clone or update repository
+echo "[2/9] Setting up repository..."
+if [ -d "$CRAWLER_DIR/.git" ]; then
+    cd "$CRAWLER_DIR"
+    git fetch origin
+    git reset --hard origin/main
+    echo "  Updated to latest."
 else
     git clone "$REPO_URL" "$CRAWLER_DIR"
     cd "$CRAWLER_DIR"
+    git branch --set-upstream-to=origin/main main
+    echo "  Cloned fresh."
 fi
 
-# 6. Create virtual environment
-echo "[6/12] Creating Python venv..."
+# 3. Python virtual environment
+echo "[3/9] Setting up Python venv..."
 python3.11 -m venv venv
 source venv/bin/activate
 
-# 7. Install Python dependencies
-echo "[7/12] Installing Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
+# 4. Python dependencies
+echo "[4/9] Installing Python dependencies..."
+pip install --upgrade pip -q
+pip install -r requirements.txt -q
 if [ -f requirements-api.txt ]; then
-    pip install -r requirements-api.txt
+    pip install -r requirements-api.txt -q
 fi
+echo "  Done."
 
-# 8. Install Playwright browsers
-echo "[8/12] Installing Playwright Chromium..."
-python -m playwright install chromium
+# 5. Playwright browser
+echo "[5/9] Installing Playwright Chromium..."
+python -m playwright install chromium > /dev/null 2>&1
+echo "  Done."
 
-# 9. Create output directories
-echo "[9/12] Creating output directories..."
+# 6. Create directories
+echo "[6/9] Creating directories..."
 mkdir -p output
+mkdir -p workflows
 
-# 10. Set up Xvfb as a systemd service
-echo "[10/12] Configuring Xvfb service..."
+# 7. Xvfb service (virtual display)
+echo "[7/9] Configuring Xvfb service..."
 cat > /etc/systemd/system/xvfb.service << EOF
 [Unit]
 Description=X Virtual Frame Buffer
@@ -98,8 +115,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# 11. Set up crawler-api as a systemd service
-echo "[11/12] Configuring crawler-api service..."
+# 8. Crawler API service
+echo "[8/9] Configuring crawler-api service..."
 cat > /etc/systemd/system/crawler-api.service << EOF
 [Unit]
 Description=Crawler API Server
@@ -122,8 +139,8 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# 12. Set up crawler-data as a systemd service
-echo "[12/12] Configuring crawler-data service..."
+# 9. Crawler Data service
+echo "[9/9] Configuring crawler-data service..."
 cat > /etc/systemd/system/crawler-data.service << EOF
 [Unit]
 Description=Crawler Data File Server
@@ -142,34 +159,49 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Enable and start all services
-systemctl daemon-reload
-systemctl enable xvfb crawler-api crawler-data
-systemctl start xvfb
-systemctl start crawler-api
-systemctl start crawler-data
-
-# Set DISPLAY environment variable globally
-grep -q '^DISPLAY=' /etc/environment || echo "DISPLAY=:${DISPLAY_NUM}" >> /etc/environment
+# Set DISPLAY globally
+grep -q '^DISPLAY=' /etc/environment 2>/dev/null || echo "DISPLAY=:${DISPLAY_NUM}" >> /etc/environment
 echo "export DISPLAY=:${DISPLAY_NUM}" > /etc/profile.d/display.sh
 
+# Start everything
 echo ""
-echo "=== Setup Complete ==="
-echo "Crawler installed at $CRAWLER_DIR"
-echo "Virtual display running on :${DISPLAY_NUM}"
+echo "Starting services..."
+systemctl daemon-reload
+systemctl enable xvfb crawler-api crawler-data --quiet
+systemctl start xvfb
+sleep 1
+systemctl start crawler-api
+systemctl start crawler-data
+sleep 2
+
+# Verify
 echo ""
-echo "Services:"
-echo "  xvfb          - Virtual display (:${DISPLAY_NUM})"
-echo "  crawler-api   - API server on port ${API_PORT}"
-echo "  crawler-data  - Data server on port ${DATA_PORT}"
+echo "============================================"
+echo "  Setup Complete!"
+echo "============================================"
 echo ""
-echo "Commands:"
-echo "  systemctl status crawler-api     # check API server"
-echo "  systemctl restart crawler-api    # restart after code changes"
-echo "  journalctl -u crawler-api -f     # tail API logs"
+
+# Check each service
+for svc in xvfb crawler-api crawler-data; do
+    if systemctl is-active --quiet "$svc"; then
+        echo "  [OK]  $svc"
+    else
+        echo "  [FAIL] $svc — run: journalctl -u $svc --no-pager -n 20"
+    fi
+done
+
 echo ""
-echo "Dashboard: http://<this-ip>:${API_PORT}/dashboard/"
+echo "--------------------------------------------"
 echo ""
-echo "Quick test:"
-echo "  cd $CRAWLER_DIR && source venv/bin/activate"
-echo "  DISPLAY=:${DISPLAY_NUM} python crawler.py --mode list --recipe recipes/example_quotes.yaml --dry-run"
+echo "  Dashboard:  http://${CONTAINER_IP:-<your-ip>}:${API_PORT}/dashboard/"
+echo "  Data files: http://${CONTAINER_IP:-<your-ip>}:${DATA_PORT}/"
+echo ""
+echo "  Useful commands:"
+echo "    systemctl status crawler-api"
+echo "    systemctl restart crawler-api"
+echo "    journalctl -u crawler-api -f"
+echo ""
+echo "  Quick test:"
+echo "    cd $CRAWLER_DIR && source venv/bin/activate"
+echo "    DISPLAY=:${DISPLAY_NUM} python crawler.py --mode list --recipe recipes/example_quotes.yaml --dry-run"
+echo ""
