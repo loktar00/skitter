@@ -6,19 +6,34 @@
 <title>Crawler Dashboard</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕷️</text></svg>">
 <style>
+  /* === VARIABLES & RESET === */
   :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --surface2: #252830;
-    --border: #2e3140;
+    --bg: #0c0e14;
+    --bg2: #101318;
+    --surface: #151821;
+    --surface2: #1e2230;
+    --surface3: #262a38;
+    --border: #2a2e3e;
+    --border-hover: #3a3f52;
     --text: #e1e4ed;
     --text2: #8b8fa3;
+    --text3: #5c6078;
     --accent: #6c8aff;
     --accent-hover: #8ba3ff;
+    --accent-dim: rgba(108,138,255,.12);
     --green: #4ade80;
+    --green-dim: rgba(74,222,128,.12);
     --red: #f87171;
+    --red-dim: rgba(248,113,113,.12);
     --yellow: #fbbf24;
+    --yellow-dim: rgba(251,191,36,.12);
+    --purple: #a78bfa;
+    --purple-dim: rgba(167,139,250,.12);
     --radius: 8px;
+    --radius-lg: 12px;
+    --sidebar-width: 240px;
+    --panel-height: 45vh;
+    --transition: .2s cubic-bezier(.4,0,.2,1);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -26,57 +41,182 @@
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
+    overflow-x: hidden;
   }
-  /* Top bar */
-  .topbar {
+
+  /* === LAYOUT: SIDEBAR === */
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+    transition: width var(--transition);
+  }
+  .sidebar-brand {
+    padding: 20px 20px 24px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 24px;
-    background: var(--surface);
+    gap: 10px;
     border-bottom: 1px solid var(--border);
   }
-  .topbar h1 {
+  .sidebar-brand h1 {
     font-size: 18px;
-    font-weight: 600;
-    margin-right: 32px;
+    font-weight: 700;
+    letter-spacing: -.3px;
   }
-  .tab-btn {
-    padding: 8px 16px;
-    background: none;
-    border: none;
+  .sidebar-brand .brand-icon {
+    width: 28px;
+    height: 28px;
+    background: var(--accent-dim);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar-nav {
+    flex: 1;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
     color: var(--text2);
     font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
-    border-radius: var(--radius);
-    transition: all .15s;
+    transition: all var(--transition);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    position: relative;
   }
-  .tab-btn:hover { color: var(--text); background: var(--surface2); }
-  .tab-btn.active { color: var(--accent); background: var(--surface2); font-weight: 600; }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active {
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    background: var(--accent);
+    border-radius: 0 3px 3px 0;
+  }
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    opacity: .7;
+  }
+  .nav-item.active svg { opacity: 1; }
+  .nav-label { white-space: nowrap; overflow: hidden; }
+  .sidebar-footer {
+    padding: 12px 8px;
+    border-top: 1px solid var(--border);
+  }
 
-  /* Main content */
-  .content { padding: 24px; max-width: 1400px; margin: 0 auto; }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
+  /* === LAYOUT: MAIN CONTENT === */
+  .main {
+    margin-left: var(--sidebar-width);
+    min-height: 100vh;
+    transition: margin-left var(--transition);
+  }
+  .main-inner {
+    padding: 28px 32px;
+    max-width: 1400px;
+  }
+  .section { display: none; }
+  .section.active { display: block; animation: fadeSection .25s ease; }
+  @keyframes fadeSection { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-  /* Cards */
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
-  .card {
+  /* Sub-nav pills */
+  .sub-nav {
+    display: inline-flex;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
+    padding: 3px;
+    margin-bottom: 24px;
+    gap: 2px;
   }
+  .sub-pill {
+    padding: 7px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text2);
+    background: none;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .sub-pill:hover { color: var(--text); }
+  .sub-pill.active { color: var(--text); background: var(--surface2); }
+  .sub-content { display: none; }
+  .sub-content.active { display: block; }
+
+  /* === COMPONENTS === */
+
+  /* Cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color var(--transition);
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+  }
+  .card:hover { border-color: var(--border-hover); }
+  .card-accent-blue::before { background: linear-gradient(90deg, var(--accent), transparent); }
+  .card-accent-green::before { background: linear-gradient(90deg, var(--green), transparent); }
+  .card-accent-red::before { background: linear-gradient(90deg, var(--red), transparent); }
+  .card-accent-yellow::before { background: linear-gradient(90deg, var(--yellow), transparent); }
+  .card-accent-purple::before { background: linear-gradient(90deg, var(--purple), transparent); }
   .card-label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
   .card-value { font-size: 28px; font-weight: 700; }
   .card-value.ok { color: var(--green); }
   .card-value.err { color: var(--red); }
 
   /* Tables */
+  .table-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
-  th { color: var(--text2); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
-  tr:hover td { background: var(--surface2); }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--text2); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; background: var(--bg2); }
+  tr { transition: all var(--transition); }
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr:last-child td { border-bottom: none; }
 
   /* Buttons */
   .btn {
@@ -89,14 +229,17 @@
     border: none;
     border-radius: var(--radius);
     cursor: pointer;
-    transition: all .15s;
+    transition: all var(--transition);
     color: #fff;
+    white-space: nowrap;
   }
   .btn-primary { background: var(--accent); }
   .btn-primary:hover { background: var(--accent-hover); }
   .btn-danger { background: var(--red); }
   .btn-danger:hover { opacity: .85; }
-  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-ghost { background: var(--surface2); color: var(--text); }
+  .btn-ghost:hover { background: var(--surface3); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
 
   /* Forms */
@@ -111,6 +254,7 @@
     color: var(--text);
     font-size: 14px;
     font-family: inherit;
+    transition: border-color var(--transition);
   }
   .form-group textarea { resize: vertical; min-height: 60px; }
   .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
@@ -121,7 +265,7 @@
   .form-section {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     padding: 20px;
     margin-bottom: 20px;
   }
@@ -131,18 +275,21 @@
   /* Status badges */
   .badge {
     display: inline-block;
-    padding: 2px 10px;
+    padding: 3px 10px;
     border-radius: 12px;
     font-size: 12px;
     font-weight: 600;
   }
-  .badge-running { background: rgba(107,138,255,.2); color: var(--accent); }
-  .badge-completed { background: rgba(74,222,128,.2); color: var(--green); }
-  .badge-failed { background: rgba(248,113,113,.2); color: var(--red); }
+  .badge-running { background: var(--accent-dim); color: var(--accent); }
+  .badge-completed { background: var(--green-dim); color: var(--green); }
+  .badge-failed { background: var(--red-dim); color: var(--red); }
+  .badge-crawl { background: var(--accent-dim); color: var(--accent); }
+  .badge-workflow { background: var(--green-dim); color: var(--green); }
+  .badge-agent { background: var(--purple-dim); color: var(--purple); }
 
   /* Log viewer */
   .log-viewer {
-    background: #0a0c10;
+    background: #080a0f;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
@@ -156,40 +303,14 @@
     color: var(--text2);
   }
 
-  /* Toast */
-  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
-  .toast {
-    padding: 12px 20px;
-    border-radius: var(--radius);
-    font-size: 14px;
-    animation: fadeIn .2s;
-    max-width: 400px;
-  }
-  .toast-success { background: rgba(74,222,128,.15); border: 1px solid var(--green); color: var(--green); }
-  .toast-error { background: rgba(248,113,113,.15); border: 1px solid var(--red); color: var(--red); }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-
-  /* Browser view */
-  .vnc-frame {
-    width: 100%;
-    height: calc(100vh - 140px);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: #000;
-  }
-
-  /* Crawl controls */
-  .crawl-controls {
+  /* Section headers */
+  .section-header {
     display: flex;
-    gap: 12px;
-    align-items: flex-end;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
-    flex-wrap: wrap;
   }
-  .crawl-controls .form-group { margin-bottom: 0; }
-  .crawl-controls select { min-width: 280px; }
-  .crawl-controls label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); cursor: pointer; }
-  .crawl-controls input[type="checkbox"] { accent-color: var(--accent); }
+  .section-header h2 { font-size: 18px; font-weight: 600; }
 
   /* File browser */
   .breadcrumb { display: flex; align-items: center; gap: 4px; margin-bottom: 16px; font-size: 14px; flex-wrap: wrap; }
@@ -197,7 +318,7 @@
   .breadcrumb a:hover { text-decoration: underline; }
   .breadcrumb span { color: var(--text2); }
   .file-preview {
-    background: #0a0c10;
+    background: #080a0f;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
@@ -213,7 +334,7 @@
 
   /* Agent output */
   .agent-output {
-    background: #0a0c10;
+    background: #080a0f;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
@@ -287,486 +408,777 @@
   .agent-elapsed {
     color: var(--text2);
     font-size: 12px;
-    margin-top: 8px;
+  }
+
+  /* === BROWSER VIEW (full section) === */
+  .vnc-frame-full {
+    width: 100%;
+    height: calc(100vh - 140px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #000;
+  }
+
+  /* === BROWSER PANEL === */
+  .browser-panel {
+    position: fixed;
+    bottom: 0;
+    left: var(--sidebar-width);
+    right: 0;
+    height: var(--panel-height);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    z-index: 90;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+  }
+  .browser-panel.open { transform: translateY(0); }
+  .browser-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    cursor: ns-resize;
+  }
+  .browser-panel-header h3 { font-size: 13px; font-weight: 600; }
+  .browser-panel-body {
+    height: calc(100% - 40px);
+  }
+  .browser-panel-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #000;
+  }
+  .browser-toggle {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 95;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
+    transition: all var(--transition);
+  }
+  .browser-toggle:hover { background: var(--accent-hover); transform: scale(1.08); }
+  .browser-toggle svg { width: 20px; height: 20px; }
+  .browser-panel.open ~ .browser-toggle { bottom: calc(var(--panel-height) + 16px); }
+
+  /* === SETTINGS DRAWER === */
+  .settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 200;
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition);
+  }
+  .settings-overlay.open { opacity: 1; visibility: visible; }
+  .settings-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 420px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    z-index: 201;
+    transform: translateX(100%);
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    overflow-y: auto;
+    padding: 24px;
+  }
+  .settings-drawer.open { transform: translateX(0); }
+  .settings-drawer h2 {
+    font-size: 18px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .settings-drawer .close-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    cursor: pointer;
+    padding: 4px;
+  }
+  .settings-drawer .close-btn:hover { color: var(--text); }
+
+  /* === TASK DETAIL INLINE === */
+  .task-detail {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin: 8px 0;
+  }
+  .task-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .task-detail-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .task-detail-meta dt { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
+  .task-detail-meta dd { font-size: 14px; margin-top: 2px; }
+  .task-screenshot {
+    width: 200px;
+    height: 120px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    object-fit: cover;
+    cursor: pointer;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: center;
+  }
+  .filter-bar select {
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  /* Toast */
+  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    animation: toastIn .2s ease;
+    max-width: 400px;
+  }
+  .toast-success { background: var(--green-dim); border: 1px solid var(--green); color: var(--green); }
+  .toast-error { background: var(--red-dim); border: 1px solid var(--red); color: var(--red); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+  /* === ANIMATIONS === */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .6; }
+  }
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+
+  /* Crawl controls */
+  .crawl-controls {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .crawl-controls .form-group { margin-bottom: 0; }
+  .crawl-controls select { min-width: 280px; }
+  .crawl-controls label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); cursor: pointer; }
+  .crawl-controls input[type="checkbox"] { accent-color: var(--accent); }
+
+  /* Responsive sidebar collapse */
+  @media (max-width: 1024px) {
+    .sidebar { width: 60px; }
+    .sidebar .nav-label,
+    .sidebar .sidebar-brand h1 { display: none; }
+    .sidebar .sidebar-brand { padding: 16px; justify-content: center; }
+    .sidebar .nav-item { justify-content: center; padding: 10px; }
+    .sidebar .nav-item svg { margin: 0; }
+    .main { margin-left: 60px; }
+    .browser-panel { left: 60px; }
   }
 </style>
 </head>
 <body>
 
-<div class="topbar">
-  <h1>Crawler</h1>
-  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-  <button class="tab-btn" data-tab="recipes">Recipes</button>
-  <button class="tab-btn" data-tab="crawl">Run Crawl</button>
-  <button class="tab-btn" data-tab="workflows">Workflows</button>
-  <button class="tab-btn" data-tab="login">Login</button>
-  <button class="tab-btn" data-tab="files">Files</button>
-  <button class="tab-btn" data-tab="agent">Agent</button>
-  <button class="tab-btn" data-tab="browser">Browser View</button>
-</div>
-
-<div class="toast-container" id="toasts"></div>
-
-<div class="content">
-
-  <!-- TAB: Dashboard -->
-  <div class="tab-content active" id="tab-dashboard">
-    <div class="cards">
-      <div class="card">
-        <div class="card-label">API Status</div>
-        <div class="card-value" id="dash-api">...</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Recipes</div>
-        <div class="card-value" id="dash-recipes">...</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Running Tasks</div>
-        <div class="card-value" id="dash-running">0</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Completed Tasks</div>
-        <div class="card-value" id="dash-completed">0</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Failed Tasks</div>
-        <div class="card-value" id="dash-failed">0</div>
-      </div>
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--accent)">
+        <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
     </div>
-    <h2 style="margin-bottom:12px; font-size:16px;">Recent Crawl Tasks</h2>
-    <table id="dash-tasks-table">
-      <thead><tr><th>ID</th><th>Recipe</th><th>Status</th><th>Started</th><th>Log Lines</th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <h1>Crawler</h1>
   </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-section="overview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="nav-label">Overview</span>
+    </button>
+    <button class="nav-item" data-section="launch">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <span class="nav-label">Launch</span>
+    </button>
+    <button class="nav-item" data-section="library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span class="nav-label">Library</span>
+    </button>
+    <button class="nav-item" data-section="files">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span class="nav-label">Files</span>
+    </button>
+    <button class="nav-item" data-section="browser">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span class="nav-label">Browser View</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="nav-item" onclick="openSettings()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-3.3-6.7-1.4 1.4M6.7 17.3l-1.4 1.4m0-13.4 1.4 1.4m10.6 10.6 1.4 1.4"/></svg>
+      <span class="nav-label">Settings</span>
+    </button>
+  </div>
+</aside>
 
-  <!-- TAB: Recipes -->
-  <div class="tab-content" id="tab-recipes">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h2 style="font-size:16px;">Recipes</h2>
-      <button class="btn btn-primary" onclick="toggleRecipeForm()">+ New Recipe</button>
-    </div>
+<!-- MAIN CONTENT -->
+<div class="main">
+  <div class="main-inner">
 
-    <!-- Recipe list -->
-    <table id="recipe-table">
-      <thead><tr><th>Name</th><th>Start URL</th><th>Pagination</th><th>Actions</th></tr></thead>
-      <tbody></tbody>
-    </table>
-
-    <!-- Create recipe form (hidden) -->
-    <div id="recipe-form" class="hidden" style="margin-top:24px;">
-      <div class="form-section">
-        <h3>Create Recipe</h3>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Recipe Name</label>
-            <input type="text" id="rf-name" placeholder="my_recipe">
-          </div>
-          <div class="form-group">
-            <label>Item Link CSS</label>
-            <input type="text" id="rf-item-link" value="a[href]">
-          </div>
+    <!-- ====== SECTION: OVERVIEW ====== -->
+    <div class="section active" id="section-overview">
+      <div class="section-header">
+        <h2>Overview</h2>
+      </div>
+      <div class="cards">
+        <div class="card card-accent-green">
+          <div class="card-label">API Status</div>
+          <div class="card-value" id="dash-api">...</div>
         </div>
-        <div class="form-group">
-          <label>Start URLs (one per line)</label>
-          <textarea id="rf-urls" rows="3" placeholder="https://example.com/page1"></textarea>
+        <div class="card card-accent-blue">
+          <div class="card-label">Recipes</div>
+          <div class="card-value" id="dash-recipes">...</div>
         </div>
-        <div class="form-group">
-          <label>List Scope CSS</label>
-          <input type="text" id="rf-scope" placeholder="div.item">
+        <div class="card card-accent-purple">
+          <div class="card-label">Running</div>
+          <div class="card-value" id="dash-running">0</div>
         </div>
-
-        <h3 style="margin-top:20px;">Pagination</h3>
-        <div class="form-group">
-          <label>Type</label>
-          <select id="rf-pag-type" onchange="updatePagFields()">
-            <option value="">None</option>
-            <option value="next">Next Button</option>
-            <option value="all_links">All Links</option>
-            <option value="url_template">URL Template</option>
-          </select>
+        <div class="card card-accent-green">
+          <div class="card-label">Completed</div>
+          <div class="card-value" id="dash-completed">0</div>
         </div>
-        <div id="pag-next" class="hidden">
-          <div class="form-group">
-            <label>Next Button CSS</label>
-            <input type="text" id="rf-next-css" placeholder="a.next-page">
-          </div>
-        </div>
-        <div id="pag-all-links" class="hidden">
-          <div class="form-group">
-            <label>Pagination Scope CSS</label>
-            <input type="text" id="rf-pag-scope" placeholder="nav.pagination a">
-          </div>
-        </div>
-        <div id="pag-url-template" class="hidden">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Page Parameter</label>
-              <input type="text" id="rf-page-param" placeholder="page">
-            </div>
-            <div class="form-group" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-              <div>
-                <label>Start</label>
-                <input type="number" id="rf-page-start" value="1">
-              </div>
-              <div>
-                <label>End</label>
-                <input type="number" id="rf-page-end" value="10">
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <h3 style="margin-top:20px;">Limits</h3>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Max List Pages</label>
-            <input type="number" id="rf-max-pages" placeholder="10">
-          </div>
-          <div class="form-group">
-            <label>Max Items</label>
-            <input type="number" id="rf-max-items" placeholder="100">
-          </div>
-        </div>
-
-        <h3 style="margin-top:20px;">Output</h3>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Items JSONL</label>
-            <input type="text" id="rf-out-items" placeholder="auto-generated">
-          </div>
-          <div class="form-group">
-            <label>Pages JSONL</label>
-            <input type="text" id="rf-out-pages" placeholder="auto-generated">
-          </div>
-        </div>
-
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <button class="btn btn-primary" onclick="createRecipe()">Create Recipe</button>
-          <button class="btn" style="background:var(--surface2)" onclick="toggleRecipeForm()">Cancel</button>
+        <div class="card card-accent-red">
+          <div class="card-label">Failed</div>
+          <div class="card-value" id="dash-failed">0</div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- TAB: Run Crawl -->
-  <div class="tab-content" id="tab-crawl">
-    <div class="crawl-controls">
-      <div class="form-group">
-        <label>Mode</label>
-        <select id="crawl-mode" onchange="toggleCrawlMode()" style="min-width:180px;">
-          <option value="list">List Crawl (Recipe)</option>
-          <option value="full">Full HTML Crawl</option>
+      <div class="section-header">
+        <h2>Activity</h2>
+      </div>
+      <div class="filter-bar">
+        <select id="filter-type" onchange="renderTasks()">
+          <option value="">All Types</option>
+          <option value="crawl">Crawl</option>
+          <option value="workflow">Workflow</option>
+          <option value="agent">Agent</option>
+        </select>
+        <select id="filter-status" onchange="renderTasks()">
+          <option value="">All Status</option>
+          <option value="running">Running</option>
+          <option value="completed">Completed</option>
+          <option value="failed">Failed</option>
         </select>
       </div>
-      <div id="crawl-list-fields" class="form-group">
-        <label>Recipe</label>
-        <select id="crawl-recipe"></select>
-      </div>
-      <div class="form-group">
-        <label><input type="checkbox" id="crawl-headless" checked> Headless</label>
-      </div>
-      <button class="btn btn-primary" onclick="startCrawl()">Start Crawl</button>
-    </div>
-    <div id="crawl-full-fields" class="hidden" style="margin-bottom:20px;">
-      <div class="form-section">
-        <div class="form-group">
-          <label>URLs (one per line)</label>
-          <textarea id="crawl-full-urls" rows="3" placeholder="https://example.com"></textarea>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Max Depth</label>
-            <input type="number" id="crawl-full-depth" value="2" min="0" max="10">
-          </div>
-          <div class="form-group">
-            <label>Allowed Domains (comma-separated, blank = same as URL)</label>
-            <input type="text" id="crawl-full-domains" placeholder="example.com, sub.example.com">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <h2 style="font-size:16px; margin-bottom:12px;">Tasks</h2>
-    <table id="crawl-table">
-      <thead><tr><th>ID</th><th>Recipe</th><th>Status</th><th>Started</th><th>Actions</th></tr></thead>
-      <tbody></tbody>
-    </table>
-
-    <div id="log-section" class="hidden" style="margin-top:20px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <h2 style="font-size:16px;">Log: <span id="log-task-id"></span></h2>
-        <button class="btn btn-sm" style="background:var(--surface2)" onclick="closeLog()">Close</button>
-      </div>
-      <div class="log-viewer" id="log-output"></div>
-    </div>
-  </div>
-
-  <!-- TAB: Workflows -->
-  <div class="tab-content" id="tab-workflows">
-
-    <!-- Workflow List -->
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h2 style="font-size:16px;">Saved Workflows</h2>
-      <button class="btn btn-primary" onclick="toggleRecordSection()">+ Record New</button>
-    </div>
-    <table id="wf-table">
-      <thead><tr><th>Name</th><th>Description</th><th>Steps</th><th>Tags</th><th>Actions</th></tr></thead>
-      <tbody></tbody>
-    </table>
-
-    <!-- Record Section (hidden by default) -->
-    <div id="wf-record-section" class="hidden" style="margin-top:24px;">
-      <div class="form-section" style="border-color:var(--accent);">
-        <h3>Record Workflow</h3>
-        <p style="color:var(--text2); font-size:13px; margin-bottom:12px;">
-          Describe a task in English. The agent will perform it using the live browser, and
-          the steps will be recorded as a replayable workflow.
-        </p>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Workflow Name</label>
-            <input type="text" id="wf-rec-name" placeholder="e.g. post_tweet">
-          </div>
-          <div class="form-group">
-            <label>Description (optional)</label>
-            <input type="text" id="wf-rec-desc" placeholder="What this workflow does">
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Task Prompt</label>
-          <textarea id="wf-rec-prompt" rows="3" placeholder="Describe what the workflow should do..."></textarea>
-        </div>
-        <div style="display:flex; gap:8px; margin-bottom:12px;">
-          <button class="btn btn-primary" id="wf-rec-start-btn" onclick="startRecording()">Start Recording</button>
-          <button class="btn" style="background:var(--surface2)" onclick="toggleRecordSection()">Cancel</button>
-        </div>
-        <div id="wf-rec-log-section" class="hidden">
-          <h4 style="font-size:13px; color:var(--text2); margin-bottom:8px;">Recording Log</h4>
-          <div class="log-viewer" id="wf-rec-log" style="max-height:300px;"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step Editor (shown after recording) -->
-    <div id="wf-step-editor" class="hidden" style="margin-top:24px;">
-      <div class="form-section">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <h3>Recorded Steps</h3>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-primary" onclick="saveRecordedWorkflow()">Save Workflow</button>
-            <button class="btn" style="background:var(--surface2)" onclick="discardRecording()">Discard</button>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Input Fields (JSON, e.g. {"text": {"type":"string","description":"Tweet content","required":true}})</label>
-          <textarea id="wf-step-inputs" rows="2" placeholder="{}"></textarea>
-        </div>
-        <div class="form-group">
-          <label>Tags (comma-separated)</label>
-          <input type="text" id="wf-step-tags" placeholder="social, twitter">
-        </div>
-        <table id="wf-steps-table">
-          <thead><tr><th>#</th><th>Action</th><th>Description</th><th>Params</th></tr></thead>
+      <div class="table-container">
+        <table id="tasks-table">
+          <thead><tr><th>Type</th><th>Label</th><th>Status</th><th>Started</th><th>Duration</th><th>Logs</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <div id="task-detail-container"></div>
     </div>
 
-    <!-- Run Section (shown when clicking Run on a workflow) -->
-    <div id="wf-run-section" class="hidden" style="margin-top:24px;">
-      <div class="form-section">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <h3>Run: <span id="wf-run-name"></span></h3>
-          <button class="btn btn-sm" style="background:var(--surface2)" onclick="closeRunSection()">Close</button>
-        </div>
-        <div id="wf-run-inputs"></div>
-        <div class="form-group" style="margin-top:8px;">
-          <label><input type="checkbox" id="wf-run-headless" checked> Headless</label>
-        </div>
-        <div style="display:flex; gap:8px; margin-bottom:12px;">
-          <button class="btn btn-primary" id="wf-run-btn" onclick="executeWorkflow()">Run Workflow</button>
-        </div>
-        <div id="wf-run-log-section" class="hidden">
-          <h4 style="font-size:13px; color:var(--text2); margin-bottom:8px;">Run Log</h4>
-          <div class="log-viewer" id="wf-run-log" style="max-height:300px;"></div>
-        </div>
+    <!-- ====== SECTION: LAUNCH ====== -->
+    <div class="section" id="section-launch">
+      <div class="section-header">
+        <h2>Launch</h2>
       </div>
-    </div>
-
-  </div>
-
-  <!-- TAB: Login -->
-  <div class="tab-content" id="tab-login">
-    <h2 style="font-size:16px; margin-bottom:16px;">Login to Sites</h2>
-    <p style="color:var(--text2); font-size:14px; margin-bottom:20px;">
-      Open a site in the live browser, log in manually via the Browser View tab, then save your session.
-      Cookies are stored and reused by all future headless crawl runs.
-    </p>
-
-    <div class="form-section">
-      <h3>Open Login Page</h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label>URL</label>
-          <input type="text" id="login-url" placeholder="https://www.ebay.com/signin">
-        </div>
-        <div class="form-group">
-          <label>Label (optional)</label>
-          <input type="text" id="login-label" placeholder="eBay">
-        </div>
+      <div class="sub-nav" id="launch-pills">
+        <button class="sub-pill active" data-sub="launch-crawl">Crawl</button>
+        <button class="sub-pill" data-sub="launch-agent">Agent Task</button>
+        <button class="sub-pill" data-sub="launch-workflow">Workflow Run</button>
       </div>
-      <div style="display:flex; gap:8px; margin-top:4px;">
-        <button class="btn btn-primary" id="login-open-btn" onclick="loginOpen()">Open Browser</button>
-      </div>
-    </div>
 
-    <div id="login-active-section" class="hidden" style="margin-top:20px;">
-      <div class="form-section" style="border-color:var(--accent);">
-        <h3>Active Login Session</h3>
-        <p style="color:var(--text2); font-size:14px; margin-bottom:12px;">
-          Site: <strong id="login-active-label"></strong><br>
-          <span style="font-size:12px;" id="login-active-url"></span>
-        </p>
-        <p style="color:var(--yellow); font-size:13px; margin-bottom:16px;">
-          Switch to the <strong>Browser View</strong> tab to log in, then come back here and click Save Session.
-        </p>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-primary" onclick="loginSave()">Save Session</button>
-          <button class="btn btn-danger" onclick="loginCancel()">Cancel</button>
-          <button class="btn" style="background:var(--surface2)" onclick="switchToBrowser()">Go to Browser View</button>
-        </div>
-      </div>
-    </div>
-
-    <div style="margin-top:24px;">
-      <h3 style="font-size:15px; margin-bottom:12px;">Saved Sessions</h3>
-      <p style="color:var(--text2); font-size:13px; margin-bottom:12px;" id="login-cookie-count"></p>
-      <div id="login-domains" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
-    </div>
-  </div>
-
-  <!-- TAB: Files -->
-  <div class="tab-content" id="tab-files">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-      <h2 style="font-size:16px;">Output Files</h2>
-    </div>
-    <div class="breadcrumb" id="files-breadcrumb"></div>
-    <table id="files-table">
-      <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Actions</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div id="file-preview-section" class="hidden" style="margin-top:20px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <h3 style="font-size:14px;" id="preview-filename"></h3>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-sm btn-primary" id="preview-download-btn">Download</button>
-          <button class="btn btn-sm" style="background:var(--surface2)" onclick="closePreview()">Close</button>
-        </div>
-      </div>
-      <div class="file-preview" id="file-preview-content"></div>
-    </div>
-  </div>
-
-  <!-- TAB: Agent -->
-  <div class="tab-content" id="tab-agent">
-    <h2 style="font-size:16px; margin-bottom:16px;">Browser Agent</h2>
-    <p style="color:var(--text2); font-size:14px; margin-bottom:20px;">
-      Give the agent a natural language command. It will use the live browser to explore pages and complete actions.
-    </p>
-
-    <div class="form-section">
-      <div class="form-group">
-        <label>URL (optional — agent will navigate here first)</label>
-        <input type="text" id="agent-url" placeholder="https://example.com">
-      </div>
-      <div class="form-group">
-        <label>Prompt</label>
-        <textarea id="agent-prompt" rows="3" placeholder="Find the page title and list all links..."></textarea>
-      </div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <button class="btn btn-primary" id="agent-run-btn" onclick="agentRun()">Run</button>
-        <button class="btn btn-danger" id="agent-stop-btn" onclick="agentStop()" disabled>Stop</button>
-        <button class="btn" style="background:var(--surface2)" onclick="agentClear()">Clear</button>
-        <span class="agent-elapsed" id="agent-elapsed"></span>
-      </div>
-    </div>
-    <div id="agent-output-section" style="margin-top:20px;">
-      <div class="agent-output" id="agent-output"></div>
-    </div>
-
-    <!-- Save as Workflow (shown after successful run) -->
-    <div id="agent-save-section" class="hidden" style="margin-top:16px;">
-      <div class="form-section" style="border-color:var(--green);">
-        <h3 style="font-size:14px; margin-bottom:12px;">Save as Workflow</h3>
-        <p style="color:var(--text2); font-size:12px; margin-bottom:12px;">
-          Save this run as a replayable workflow. Future runs will replay the exact steps without AI.
-        </p>
-        <div id="agent-save-steps-preview" style="margin-bottom:12px; font-size:12px; color:var(--text2);"></div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Workflow Name</label>
-            <input type="text" id="agent-save-name" placeholder="e.g. ebay_recent_purchase">
+      <!-- Launch > Crawl -->
+      <div class="sub-content active" id="launch-crawl">
+        <div class="form-section">
+          <h3>Start Crawl</h3>
+          <div class="crawl-controls">
+            <div class="form-group">
+              <label>Mode</label>
+              <select id="crawl-mode" onchange="toggleCrawlMode()" style="min-width:180px;">
+                <option value="list">List Crawl (Recipe)</option>
+                <option value="full">Full HTML Crawl</option>
+              </select>
+            </div>
+            <div id="crawl-list-fields" class="form-group">
+              <label>Recipe</label>
+              <select id="crawl-recipe"></select>
+            </div>
+            <div class="form-group">
+              <label><input type="checkbox" id="crawl-headless" checked> Headless</label>
+            </div>
+            <button class="btn btn-primary" onclick="startCrawl()">Start Crawl</button>
           </div>
-          <div class="form-group">
-            <label>Description (optional)</label>
-            <input type="text" id="agent-save-desc" placeholder="What this workflow does">
+          <div id="crawl-full-fields" class="hidden" style="margin-bottom:20px;">
+            <div class="form-group">
+              <label>URLs (one per line)</label>
+              <textarea id="crawl-full-urls" rows="3" placeholder="https://example.com"></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Max Depth</label>
+                <input type="number" id="crawl-full-depth" value="2" min="0" max="10">
+              </div>
+              <div class="form-group">
+                <label>Allowed Domains (comma-separated)</label>
+                <input type="text" id="crawl-full-domains" placeholder="example.com, sub.example.com">
+              </div>
+            </div>
           </div>
         </div>
-        <div class="form-group">
-          <label>Tags (comma-separated, optional)</label>
-          <input type="text" id="agent-save-tags" placeholder="ebay, purchases">
+      </div>
+
+      <!-- Launch > Agent Task -->
+      <div class="sub-content" id="launch-agent">
+        <div class="form-section">
+          <h3>Browser Agent</h3>
+          <p style="color:var(--text2); font-size:13px; margin-bottom:16px;">
+            Give the agent a natural language command. It uses the live browser to explore and complete actions.
+          </p>
+          <div class="form-group">
+            <label>URL (optional)</label>
+            <input type="text" id="agent-url" placeholder="https://example.com">
+          </div>
+          <div class="form-group">
+            <label>Prompt</label>
+            <textarea id="agent-prompt" rows="3" placeholder="Find the page title and list all links..."></textarea>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-primary" id="agent-run-btn" onclick="agentRun()">Run</button>
+            <button class="btn btn-danger" id="agent-stop-btn" onclick="agentStop()" disabled>Stop</button>
+            <button class="btn btn-ghost" onclick="agentClear()">Clear</button>
+            <span class="agent-elapsed" id="agent-elapsed"></span>
+          </div>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-primary" onclick="agentSaveWorkflow()">Save Workflow</button>
-          <button class="btn" style="background:var(--surface2)" onclick="agentDismissSave()">Dismiss</button>
+        <div id="agent-output-section" style="margin-top:20px;">
+          <div class="agent-output" id="agent-output"></div>
+        </div>
+        <!-- Save as Workflow -->
+        <div id="agent-save-section" class="hidden" style="margin-top:16px;">
+          <div class="form-section" style="border-color:var(--green);">
+            <h3 style="font-size:14px; margin-bottom:12px;">Save as Workflow</h3>
+            <p style="color:var(--text2); font-size:12px; margin-bottom:12px;">
+              Save this run as a replayable workflow. Future runs replay the exact steps without AI.
+            </p>
+            <div id="agent-save-steps-preview" style="margin-bottom:12px; font-size:12px; color:var(--text2);"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Workflow Name</label>
+                <input type="text" id="agent-save-name" placeholder="e.g. ebay_recent_purchase">
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <input type="text" id="agent-save-desc" placeholder="What this workflow does">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Tags (comma-separated)</label>
+              <input type="text" id="agent-save-tags" placeholder="ebay, purchases">
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-primary" onclick="agentSaveWorkflow()">Save Workflow</button>
+              <button class="btn btn-ghost" onclick="agentDismissSave()">Dismiss</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Launch > Workflow Run -->
+      <div class="sub-content" id="launch-workflow">
+        <div id="wf-run-placeholder" style="color:var(--text2); padding:40px; text-align:center;">
+          Select a workflow from <a href="#" onclick="navigateTo('library','library-workflows'); return false;" style="color:var(--accent);">Library > Workflows</a> and click Run.
+        </div>
+        <div id="wf-run-section" class="hidden">
+          <div class="form-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h3>Run: <span id="wf-run-name"></span></h3>
+              <button class="btn btn-sm btn-ghost" onclick="closeRunSection()">Close</button>
+            </div>
+            <div id="wf-run-inputs"></div>
+            <div class="form-group" style="margin-top:8px;">
+              <label><input type="checkbox" id="wf-run-headless" checked> Headless</label>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+              <button class="btn btn-primary" id="wf-run-btn" onclick="executeWorkflow()">Run Workflow</button>
+            </div>
+            <div id="wf-run-log-section" class="hidden">
+              <h4 style="font-size:13px; color:var(--text2); margin-bottom:8px;">Run Log</h4>
+              <div class="log-viewer" id="wf-run-log" style="max-height:300px;"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- TAB: Browser View -->
-  <div class="tab-content" id="tab-browser">
-    <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
-      <h2 style="font-size:16px;">Live Browser (Xvfb :99)</h2>
-      <button class="btn btn-sm btn-primary" onclick="reconnectVNC()">Reconnect</button>
+    <!-- ====== SECTION: LIBRARY ====== -->
+    <div class="section" id="section-library">
+      <div class="section-header">
+        <h2>Library</h2>
+      </div>
+      <div class="sub-nav" id="library-pills">
+        <button class="sub-pill active" data-sub="library-recipes">Recipes</button>
+        <button class="sub-pill" data-sub="library-workflows">Workflows</button>
+      </div>
+
+      <!-- Library > Recipes -->
+      <div class="sub-content active" id="library-recipes">
+        <div class="section-header">
+          <h2 style="font-size:16px;">Recipes</h2>
+          <button class="btn btn-primary" onclick="toggleRecipeForm()">+ New Recipe</button>
+        </div>
+        <div class="table-container">
+          <table id="recipe-table">
+            <thead><tr><th>Name</th><th>Start URL</th><th>Pagination</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <!-- Create recipe form -->
+        <div id="recipe-form" class="hidden" style="margin-top:24px;">
+          <div class="form-section">
+            <h3>Create Recipe</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Recipe Name</label>
+                <input type="text" id="rf-name" placeholder="my_recipe">
+              </div>
+              <div class="form-group">
+                <label>Item Link CSS</label>
+                <input type="text" id="rf-item-link" value="a[href]">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Start URLs (one per line)</label>
+              <textarea id="rf-urls" rows="3" placeholder="https://example.com/page1"></textarea>
+            </div>
+            <div class="form-group">
+              <label>List Scope CSS</label>
+              <input type="text" id="rf-scope" placeholder="div.item">
+            </div>
+
+            <h3 style="margin-top:20px;">Pagination</h3>
+            <div class="form-group">
+              <label>Type</label>
+              <select id="rf-pag-type" onchange="updatePagFields()">
+                <option value="">None</option>
+                <option value="next">Next Button</option>
+                <option value="all_links">All Links</option>
+                <option value="url_template">URL Template</option>
+              </select>
+            </div>
+            <div id="pag-next" class="hidden">
+              <div class="form-group">
+                <label>Next Button CSS</label>
+                <input type="text" id="rf-next-css" placeholder="a.next-page">
+              </div>
+            </div>
+            <div id="pag-all-links" class="hidden">
+              <div class="form-group">
+                <label>Pagination Scope CSS</label>
+                <input type="text" id="rf-pag-scope" placeholder="nav.pagination a">
+              </div>
+            </div>
+            <div id="pag-url-template" class="hidden">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Page Parameter</label>
+                  <input type="text" id="rf-page-param" placeholder="page">
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <div>
+                    <label>Start</label>
+                    <input type="number" id="rf-page-start" value="1">
+                  </div>
+                  <div>
+                    <label>End</label>
+                    <input type="number" id="rf-page-end" value="10">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <h3 style="margin-top:20px;">Limits</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Max List Pages</label>
+                <input type="number" id="rf-max-pages" placeholder="10">
+              </div>
+              <div class="form-group">
+                <label>Max Items</label>
+                <input type="number" id="rf-max-items" placeholder="100">
+              </div>
+            </div>
+
+            <h3 style="margin-top:20px;">Output</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Items JSONL</label>
+                <input type="text" id="rf-out-items" placeholder="auto-generated">
+              </div>
+              <div class="form-group">
+                <label>Pages JSONL</label>
+                <input type="text" id="rf-out-pages" placeholder="auto-generated">
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <button class="btn btn-primary" onclick="createRecipe()">Create Recipe</button>
+              <button class="btn btn-ghost" onclick="toggleRecipeForm()">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Library > Workflows -->
+      <div class="sub-content" id="library-workflows">
+        <div class="section-header">
+          <h2 style="font-size:16px;">Workflows</h2>
+          <button class="btn btn-primary" onclick="toggleRecordSection()">+ Record New</button>
+        </div>
+        <div class="table-container">
+          <table id="wf-table">
+            <thead><tr><th>Name</th><th>Description</th><th>Steps</th><th>Tags</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <!-- Record Section -->
+        <div id="wf-record-section" class="hidden" style="margin-top:24px;">
+          <div class="form-section" style="border-color:var(--accent);">
+            <h3>Record Workflow</h3>
+            <p style="color:var(--text2); font-size:13px; margin-bottom:12px;">
+              Describe a task in English. The agent will perform it using the live browser, and
+              the steps will be recorded as a replayable workflow.
+            </p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Workflow Name</label>
+                <input type="text" id="wf-rec-name" placeholder="e.g. post_tweet">
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <input type="text" id="wf-rec-desc" placeholder="What this workflow does">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Task Prompt</label>
+              <textarea id="wf-rec-prompt" rows="3" placeholder="Describe what the workflow should do..."></textarea>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+              <button class="btn btn-primary" id="wf-rec-start-btn" onclick="startRecording()">Start Recording</button>
+              <button class="btn btn-ghost" onclick="toggleRecordSection()">Cancel</button>
+            </div>
+            <div id="wf-rec-log-section" class="hidden">
+              <h4 style="font-size:13px; color:var(--text2); margin-bottom:8px;">Recording Log</h4>
+              <div class="log-viewer" id="wf-rec-log" style="max-height:300px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step Editor -->
+        <div id="wf-step-editor" class="hidden" style="margin-top:24px;">
+          <div class="form-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h3>Recorded Steps</h3>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-primary" onclick="saveRecordedWorkflow()">Save Workflow</button>
+                <button class="btn btn-ghost" onclick="discardRecording()">Discard</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Input Fields (JSON)</label>
+              <textarea id="wf-step-inputs" rows="2" placeholder="{}"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Tags (comma-separated)</label>
+              <input type="text" id="wf-step-tags" placeholder="social, twitter">
+            </div>
+            <div class="table-container">
+              <table id="wf-steps-table">
+                <thead><tr><th>#</th><th>Action</th><th>Description</th><th>Params</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <iframe id="vnc-iframe" class="vnc-frame" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
-  </div>
 
+    <!-- ====== SECTION: FILES ====== -->
+    <div class="section" id="section-files">
+      <div class="section-header">
+        <h2>Output Files</h2>
+      </div>
+      <div class="breadcrumb" id="files-breadcrumb"></div>
+      <div class="table-container">
+        <table id="files-table">
+          <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="file-preview-section" class="hidden" style="margin-top:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="font-size:14px;" id="preview-filename"></h3>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-sm btn-primary" id="preview-download-btn">Download</button>
+            <button class="btn btn-sm btn-ghost" onclick="closePreview()">Close</button>
+          </div>
+        </div>
+        <div class="file-preview" id="file-preview-content"></div>
+      </div>
+    </div>
+
+    <!-- ====== SECTION: BROWSER VIEW ====== -->
+    <div class="section" id="section-browser">
+      <div class="section-header">
+        <h2>Browser View (VNC)</h2>
+        <button class="btn btn-sm btn-primary" onclick="reconnectVNC()">Reconnect</button>
+      </div>
+      <iframe id="vnc-iframe-full" class="vnc-frame-full" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
+    </div>
+
+  </div>
 </div>
 
+<!-- BROWSER PANEL -->
+<div class="browser-panel" id="browser-panel">
+  <div class="browser-panel-header" id="browser-panel-drag">
+    <h3>Live Browser (VNC)</h3>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn btn-sm btn-ghost" onclick="reconnectVNC()">Reconnect</button>
+      <button class="btn btn-sm btn-ghost" onclick="toggleBrowserPanel()">Close</button>
+    </div>
+  </div>
+  <div class="browser-panel-body">
+    <iframe id="vnc-iframe" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
+  </div>
+</div>
+
+<!-- Browser panel toggle button -->
+<button class="browser-toggle" onclick="toggleBrowserPanel()" title="Toggle Browser (VNC)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+</button>
+
+<!-- SETTINGS DRAWER -->
+<div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
+<div class="settings-drawer" id="settings-drawer">
+  <h2>
+    Settings
+    <button class="close-btn" onclick="closeSettings()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </h2>
+
+  <!-- API Key -->
+  <div class="form-section">
+    <h3>API Key</h3>
+    <div class="form-group">
+      <label>CRAWLER_API_KEY</label>
+      <input type="password" id="settings-api-key" placeholder="Enter API key...">
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveApiKey()">Save Key</button>
+  </div>
+
+  <!-- Login / Session Management -->
+  <div class="form-section" style="margin-top:16px;">
+    <h3>Login to Sites</h3>
+    <p style="color:var(--text2); font-size:13px; margin-bottom:16px;">
+      Open a site in the live browser, log in via VNC, then save your session.
+      Cookies are reused by all future headless crawl runs.
+    </p>
+    <div class="form-group">
+      <label>URL</label>
+      <input type="text" id="login-url" placeholder="https://www.ebay.com/signin">
+    </div>
+    <div class="form-group">
+      <label>Label (optional)</label>
+      <input type="text" id="login-label" placeholder="eBay">
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" id="login-open-btn" onclick="loginOpen()">Open Browser</button>
+    </div>
+
+    <div id="login-active-section" class="hidden" style="margin-top:16px;">
+      <div style="background:var(--accent-dim); border:1px solid var(--accent); border-radius:var(--radius); padding:12px;">
+        <p style="font-size:13px; margin-bottom:4px;">
+          <strong id="login-active-label"></strong>
+        </p>
+        <p style="font-size:12px; color:var(--text2); margin-bottom:12px;" id="login-active-url"></p>
+        <p style="color:var(--yellow); font-size:12px; margin-bottom:12px;">
+          Use the browser panel below to log in, then click Save Session.
+        </p>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-sm btn-primary" onclick="loginSave()">Save Session</button>
+          <button class="btn btn-sm btn-danger" onclick="loginCancel()">Cancel</button>
+          <button class="btn btn-sm btn-ghost" onclick="toggleBrowserPanel()">Open Browser Panel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saved Sessions -->
+  <div class="form-section" style="margin-top:16px;">
+    <h3>Saved Sessions</h3>
+    <p style="color:var(--text2); font-size:13px; margin-bottom:12px;" id="login-cookie-count"></p>
+    <div id="login-domains" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+  </div>
+</div>
+
+<!-- TOASTS -->
+<div class="toast-container" id="toasts"></div>
+
 <script>
-// --- Config ---
+// === CONFIG & STATE ===
 const API = window.location.origin;
 const VNC_PORT = 6080;
 const VNC_BASE = `${window.location.protocol}//${window.location.hostname}:${VNC_PORT}`;
 
-// --- Tab navigation ---
 let vncLoaded = false;
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    document.getElementById('tab-' + tab).classList.add('active');
+let allTasks = [];
+let expandedTaskId = null;
+let taskPollInterval = null;
+let detailPollInterval = null;
+let hasRunningTasks = false;
 
-    if (tab === 'browser' && !vncLoaded) {
-      document.getElementById('vnc-iframe').src =
-        `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
-      vncLoaded = true;
-    }
-    if (tab === 'dashboard') refreshDashboard();
-    if (tab === 'recipes') loadRecipes();
-    if (tab === 'crawl') { loadCrawlRecipes(); loadCrawlTasks(); }
-    if (tab === 'workflows') loadWorkflows();
-    if (tab === 'login') { refreshLoginStatus(); loadSavedSessions(); }
-    if (tab === 'files') loadFiles('');
-  });
-});
+// === UTILITIES ===
+function esc(s) {
+  const el = document.createElement('span');
+  el.textContent = s;
+  return el.innerHTML;
+}
 
-// --- Toast ---
 function toast(msg, type = 'success') {
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
@@ -775,7 +1187,6 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.remove(), 4000);
 }
 
-// --- API helpers ---
 function getApiKey() {
   return localStorage.getItem('crawler_api_key') || '';
 }
@@ -789,12 +1200,8 @@ async function api(path, opts = {}) {
   if (apiKey) headers['X-API-Key'] = apiKey;
   const res = await fetch(API + path, { ...opts, headers });
   if (res.status === 401) {
-    const key = prompt('API key required. Enter your CRAWLER_API_KEY:');
-    if (key) {
-      setApiKey(key);
-      return api(path, opts); // retry with key
-    }
-    throw new Error('API key required');
+    openSettings();
+    throw new Error('API key required — enter it in Settings');
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -803,7 +1210,199 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-// --- Dashboard ---
+function fmtDuration(started, finished) {
+  if (!started) return '-';
+  const start = new Date(started);
+  const end = finished ? new Date(finished) : new Date();
+  const secs = Math.round((end - start) / 1000);
+  if (secs < 60) return `${secs}s`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}m ${s}s`;
+}
+
+function fmtTime(iso) {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleString();
+}
+
+// === NAVIGATION ===
+function navigateTo(section, sub) {
+  document.querySelectorAll('.nav-item[data-section]').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const btn = document.querySelector(`.nav-item[data-section="${section}"]`);
+  if (btn) btn.classList.add('active');
+  document.getElementById('section-' + section).classList.add('active');
+
+  if (section === 'overview') pollAllTasks();
+  if (section === 'launch') loadCrawlRecipes();
+  if (section === 'library') { loadRecipes(); loadWorkflows(); }
+  if (section === 'files') loadFiles('');
+  if (section === 'browser') loadBrowserView();
+
+  if (sub) {
+    // Activate the sub-pill
+    const parent = document.getElementById('section-' + section);
+    const pills = parent.querySelectorAll('.sub-pill');
+    const contents = parent.querySelectorAll('.sub-content');
+    pills.forEach(p => p.classList.remove('active'));
+    contents.forEach(c => c.classList.remove('active'));
+    const pill = parent.querySelector(`.sub-pill[data-sub="${sub}"]`);
+    if (pill) pill.classList.add('active');
+    const content = document.getElementById(sub);
+    if (content) content.classList.add('active');
+  }
+}
+
+// Sidebar nav clicks
+document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
+  btn.addEventListener('click', () => navigateTo(btn.dataset.section));
+});
+
+// Sub-nav pill clicks
+document.querySelectorAll('.sub-nav').forEach(nav => {
+  nav.querySelectorAll('.sub-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const parent = nav.parentElement;
+      parent.querySelectorAll('.sub-pill').forEach(p => p.classList.remove('active'));
+      parent.querySelectorAll('.sub-content').forEach(c => c.classList.remove('active'));
+      pill.classList.add('active');
+      document.getElementById(pill.dataset.sub).classList.add('active');
+    });
+  });
+});
+
+// === UNIFIED TASK MONITORING ===
+async function pollAllTasks() {
+  try {
+    allTasks = await api('/api/tasks');
+    hasRunningTasks = allTasks.some(t => t.status === 'running');
+    updateDashCards();
+    renderTasks();
+  } catch { /* ignore */ }
+
+  // Adaptive polling
+  clearInterval(taskPollInterval);
+  taskPollInterval = setInterval(pollAllTasks, hasRunningTasks ? 3000 : 15000);
+}
+
+function updateDashCards() {
+  const running = allTasks.filter(t => t.status === 'running').length;
+  const completed = allTasks.filter(t => t.status === 'completed').length;
+  const failed = allTasks.filter(t => t.status === 'failed').length;
+  document.getElementById('dash-running').textContent = running;
+  document.getElementById('dash-running').className = running > 0 ? 'card-value pulse' : 'card-value';
+  document.getElementById('dash-completed').textContent = completed;
+  document.getElementById('dash-failed').textContent = failed;
+}
+
+function renderTasks() {
+  const typeFilter = document.getElementById('filter-type').value;
+  const statusFilter = document.getElementById('filter-status').value;
+
+  let filtered = allTasks;
+  if (typeFilter) filtered = filtered.filter(t => t.type === typeFilter);
+  if (statusFilter) filtered = filtered.filter(t => t.status === statusFilter);
+
+  // Running tasks pinned to top
+  const running = filtered.filter(t => t.status === 'running');
+  const others = filtered.filter(t => t.status !== 'running');
+  const sorted = [...running, ...others];
+
+  const tbody = document.querySelector('#tasks-table tbody');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text2);text-align:center;padding:32px;">No tasks yet</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(t => {
+    const isRunning = t.status === 'running';
+    const rowClass = isRunning ? 'pulse' : '';
+    return `<tr class="${rowClass}" style="cursor:pointer;" onclick="toggleTaskDetail('${esc(t.id)}')">
+      <td><span class="badge badge-${t.type}">${t.type}</span></td>
+      <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(t.label)}">${esc(t.label)}</td>
+      <td><span class="badge badge-${t.status}">${t.status}</span></td>
+      <td style="font-size:13px; color:var(--text2);">${fmtTime(t.started_at)}</td>
+      <td style="font-size:13px; color:var(--text2);">${fmtDuration(t.started_at, t.finished_at)}</td>
+      <td style="font-size:13px; color:var(--text2);">${t.log_count}</td>
+    </tr>
+    ${expandedTaskId === t.id ? `<tr><td colspan="6" id="task-detail-row" style="padding:0;"></td></tr>` : ''}`;
+  }).join('');
+
+  // Render detail if expanded
+  if (expandedTaskId) {
+    const detailRow = document.getElementById('task-detail-row');
+    if (detailRow) loadTaskDetail(expandedTaskId, detailRow);
+  }
+}
+
+async function toggleTaskDetail(taskId) {
+  if (expandedTaskId === taskId) {
+    expandedTaskId = null;
+    if (detailPollInterval) { clearInterval(detailPollInterval); detailPollInterval = null; }
+    renderTasks();
+    return;
+  }
+  expandedTaskId = taskId;
+  renderTasks();
+}
+
+async function loadTaskDetail(taskId, container) {
+  try {
+    const t = await api(`/api/tasks/${taskId}?tail=200`);
+    const isRunning = t.status === 'running';
+
+    container.innerHTML = `<div class="task-detail">
+      <div class="task-detail-header">
+        <div>
+          <span class="badge badge-${t.type}" style="margin-right:8px;">${t.type}</span>
+          <span class="badge badge-${t.status}">${t.status}</span>
+        </div>
+        <div style="display:flex; gap:8px;">
+          ${isRunning ? '<button class="btn btn-sm btn-ghost" onclick="toggleBrowserPanel()">Full VNC</button>' : ''}
+          <button class="btn btn-sm btn-ghost" onclick="expandedTaskId=null; renderTasks();">Close</button>
+        </div>
+      </div>
+      <div class="task-detail-meta">
+        <dl><dt>Task ID</dt><dd><code>${esc(t.id)}</code></dd></dl>
+        <dl><dt>Type</dt><dd>${t.type}${t.subtype ? ' / ' + t.subtype : ''}</dd></dl>
+        <dl><dt>Started</dt><dd>${fmtTime(t.started_at)}</dd></dl>
+        <dl><dt>Duration</dt><dd>${fmtDuration(t.started_at, t.finished_at)}</dd></dl>
+        <dl><dt>Log Lines</dt><dd>${t.log_count}</dd></dl>
+      </div>
+      <div style="font-size:13px; color:var(--text2); margin-bottom:8px;"><strong>Label:</strong> ${esc(t.label)}</div>
+      <div class="log-viewer" id="detail-log" style="max-height:400px;">${esc((t.log_tail || []).join('\n')) || '(no output yet)'}</div>
+    </div>`;
+
+    // Scroll log to bottom
+    const logEl = document.getElementById('detail-log');
+    if (logEl) logEl.scrollTop = logEl.scrollHeight;
+
+    // Poll for running tasks
+    if (detailPollInterval) clearInterval(detailPollInterval);
+    if (isRunning) {
+      detailPollInterval = setInterval(async () => {
+        try {
+          const updated = await api(`/api/tasks/${taskId}?tail=200`);
+          const logEl = document.getElementById('detail-log');
+          if (logEl) {
+            logEl.textContent = (updated.log_tail || []).join('\n') || '(no output yet)';
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+          if (updated.status !== 'running') {
+            clearInterval(detailPollInterval);
+            detailPollInterval = null;
+            pollAllTasks();
+          }
+        } catch { /* ignore */ }
+      }, 2000);
+    }
+  } catch (e) {
+    container.innerHTML = `<div class="task-detail"><p style="color:var(--red);">Error loading task: ${esc(e.message)}</p></div>`;
+  }
+}
+
+// === OVERVIEW ===
 async function refreshDashboard() {
   try {
     await api('/health');
@@ -813,153 +1412,14 @@ async function refreshDashboard() {
     document.getElementById('dash-api').textContent = 'Down';
     document.getElementById('dash-api').className = 'card-value err';
   }
-
   try {
     const recipes = await api('/api/recipes');
     document.getElementById('dash-recipes').textContent = recipes.length;
   } catch { /* ignore */ }
-
-  try {
-    const tasks = await api('/api/crawl');
-    const running = tasks.filter(t => t.status === 'running').length;
-    const completed = tasks.filter(t => t.status === 'completed').length;
-    const failed = tasks.filter(t => t.status === 'failed').length;
-    document.getElementById('dash-running').textContent = running;
-    document.getElementById('dash-completed').textContent = completed;
-    document.getElementById('dash-failed').textContent = failed;
-
-    const tbody = document.querySelector('#dash-tasks-table tbody');
-    tbody.innerHTML = tasks.slice(-10).reverse().map(t => `
-      <tr>
-        <td><code>${t.task_id}</code></td>
-        <td>${t.recipe_path}</td>
-        <td><span class="badge badge-${t.status}">${t.status}</span></td>
-        <td>${new Date(t.started_at).toLocaleString()}</td>
-        <td>${t.log_count}</td>
-      </tr>
-    `).join('');
-  } catch { /* ignore */ }
+  pollAllTasks();
 }
 
-// --- Recipes ---
-async function loadRecipes() {
-  try {
-    const recipes = await api('/api/recipes');
-    const tbody = document.querySelector('#recipe-table tbody');
-    tbody.innerHTML = recipes.map(r => `
-      <tr>
-        <td><strong>${esc(r.name)}</strong><br><small style="color:var(--text2)">${esc(r.path)}</small></td>
-        <td><small>${esc((r.start_urls || [])[0] || '-')}</small></td>
-        <td>${r.pagination_type || 'None'}</td>
-        <td>
-          <button class="btn btn-sm btn-primary" onclick="runRecipe('${esc(r.path)}')">Run</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteRecipe('${esc(r.path)}')">Delete</button>
-        </td>
-      </tr>
-    `).join('');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-function esc(s) {
-  const el = document.createElement('span');
-  el.textContent = s;
-  return el.innerHTML;
-}
-
-function toggleRecipeForm() {
-  document.getElementById('recipe-form').classList.toggle('hidden');
-}
-
-function updatePagFields() {
-  const type = document.getElementById('rf-pag-type').value;
-  document.getElementById('pag-next').classList.toggle('hidden', type !== 'next');
-  document.getElementById('pag-all-links').classList.toggle('hidden', type !== 'all_links');
-  document.getElementById('pag-url-template').classList.toggle('hidden', type !== 'url_template');
-}
-
-async function createRecipe() {
-  const name = document.getElementById('rf-name').value.trim();
-  if (!name) { toast('Name is required', 'error'); return; }
-
-  const urlsRaw = document.getElementById('rf-urls').value.trim();
-  const urls = urlsRaw.split('\n').map(u => u.trim()).filter(Boolean);
-  if (!urls.length) { toast('At least one URL is required', 'error'); return; }
-
-  const scope = document.getElementById('rf-scope').value.trim();
-  if (!scope) { toast('List Scope CSS is required', 'error'); return; }
-
-  const body = {
-    name,
-    start_urls: urls,
-    list_scope_css: scope,
-    item_link_css: document.getElementById('rf-item-link').value.trim() || 'a[href]',
-  };
-
-  const pagType = document.getElementById('rf-pag-type').value;
-  if (pagType) {
-    body.pagination_type = pagType;
-    if (pagType === 'next') body.next_css = document.getElementById('rf-next-css').value.trim();
-    if (pagType === 'all_links') body.pagination_scope_css = document.getElementById('rf-pag-scope').value.trim();
-    if (pagType === 'url_template') {
-      body.page_param = document.getElementById('rf-page-param').value.trim();
-      body.page_start = parseInt(document.getElementById('rf-page-start').value) || 1;
-      body.page_end = parseInt(document.getElementById('rf-page-end').value) || 10;
-    }
-  }
-
-  const maxPages = document.getElementById('rf-max-pages').value;
-  const maxItems = document.getElementById('rf-max-items').value;
-  if (maxPages) body.max_list_pages = parseInt(maxPages);
-  if (maxItems) body.max_items = parseInt(maxItems);
-
-  const outItems = document.getElementById('rf-out-items').value.trim();
-  const outPages = document.getElementById('rf-out-pages').value.trim();
-  if (outItems) body.items_jsonl = outItems;
-  if (outPages) body.pages_jsonl = outPages;
-
-  try {
-    await api('/api/recipes', { method: 'POST', body: JSON.stringify(body) });
-    toast('Recipe created');
-    toggleRecipeForm();
-    loadRecipes();
-    // Reset form
-    ['rf-name','rf-urls','rf-scope','rf-next-css','rf-pag-scope','rf-page-param','rf-out-items','rf-out-pages'].forEach(id => {
-      document.getElementById(id).value = '';
-    });
-    document.getElementById('rf-item-link').value = 'a[href]';
-    document.getElementById('rf-pag-type').value = '';
-    updatePagFields();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-async function deleteRecipe(path) {
-  if (!confirm(`Delete recipe ${path}?`)) return;
-  try {
-    await api(`/api/recipes/${path}`, { method: 'DELETE' });
-    toast('Recipe deleted');
-    loadRecipes();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-async function runRecipe(path) {
-  // Switch to crawl tab and start
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="crawl"]').classList.add('active');
-  document.getElementById('tab-crawl').classList.add('active');
-
-  await loadCrawlRecipes();
-  document.getElementById('crawl-recipe').value = path;
-  startCrawl();
-}
-
-// --- Crawl ---
+// === LAUNCH: CRAWL ===
 function toggleCrawlMode() {
   const mode = document.getElementById('crawl-mode').value;
   document.getElementById('crawl-list-fields').classList.toggle('hidden', mode !== 'list');
@@ -978,26 +1438,9 @@ async function loadCrawlRecipes() {
   } catch { /* ignore */ }
 }
 
-async function loadCrawlTasks() {
-  try {
-    const tasks = await api('/api/crawl');
-    const tbody = document.querySelector('#crawl-table tbody');
-    tbody.innerHTML = tasks.slice().reverse().map(t => `
-      <tr>
-        <td><code>${t.task_id}</code></td>
-        <td>${esc(t.recipe_path || (t.urls || []).join(', ') || '-')}</td>
-        <td><span class="badge badge-${t.status === 'running' ? 'running' : t.status}">${t.status}</span></td>
-        <td>${new Date(t.started_at).toLocaleString()}</td>
-        <td><button class="btn btn-sm" style="background:var(--surface2)" onclick="viewLog('${t.task_id}')">Log</button></td>
-      </tr>
-    `).join('');
-  } catch { /* ignore */ }
-}
-
 async function startCrawl() {
   const mode = document.getElementById('crawl-mode').value;
   const headless = document.getElementById('crawl-headless').checked;
-
   try {
     let res;
     if (mode === 'full') {
@@ -1020,529 +1463,16 @@ async function startCrawl() {
       });
     }
     toast(`Crawl started: ${res.task_id}`);
-    loadCrawlTasks();
-    viewLog(res.task_id);
+    // Switch to Overview to see the task
+    navigateTo('overview');
+    expandedTaskId = res.task_id;
+    pollAllTasks();
   } catch (e) {
     toast(e.message, 'error');
   }
 }
 
-let logPollInterval = null;
-function viewLog(taskId) {
-  document.getElementById('log-section').classList.remove('hidden');
-  document.getElementById('log-task-id').textContent = taskId;
-  document.getElementById('log-output').textContent = 'Loading...';
-
-  if (logPollInterval) clearInterval(logPollInterval);
-
-  async function poll() {
-    try {
-      const data = await api(`/api/crawl/${taskId}?tail=200`);
-      const el = document.getElementById('log-output');
-      el.textContent = data.log_tail.join('\n') || '(no output yet)';
-      el.scrollTop = el.scrollHeight;
-
-      // Update task list too
-      loadCrawlTasks();
-
-      if (data.status !== 'running') {
-        clearInterval(logPollInterval);
-        logPollInterval = null;
-      }
-    } catch { /* ignore */ }
-  }
-
-  poll();
-  logPollInterval = setInterval(poll, 2000);
-}
-
-function closeLog() {
-  document.getElementById('log-section').classList.add('hidden');
-  if (logPollInterval) { clearInterval(logPollInterval); logPollInterval = null; }
-}
-
-// --- Workflows ---
-let recordedSteps = null;
-let recordedMeta = null;
-let wfRunPollInterval = null;
-let currentRunWorkflow = null;
-
-async function loadWorkflows() {
-  try {
-    const workflows = await api('/api/workflows');
-    const tbody = document.querySelector('#wf-table tbody');
-    if (!workflows.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text2);text-align:center;padding:24px;">No workflows yet. Click "Record New" to create one.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = workflows.map(w => `
-      <tr>
-        <td><strong>${esc(w.name)}</strong></td>
-        <td style="color:var(--text2); font-size:13px;">${esc(w.description || '-')}</td>
-        <td>${w.step_count}</td>
-        <td>${(w.tags || []).map(t => `<span class="badge badge-completed" style="margin-right:4px;">${esc(t)}</span>`).join('') || '-'}</td>
-        <td style="white-space:nowrap;">
-          <button class="btn btn-sm btn-primary" onclick="openRunWorkflow('${esc(w.name)}')">Run</button>
-          <button class="btn btn-sm" style="background:var(--surface2)" onclick="viewWorkflow('${esc(w.name)}')">View</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteWorkflow('${esc(w.name)}')">Delete</button>
-        </td>
-      </tr>
-    `).join('');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-function toggleRecordSection() {
-  const el = document.getElementById('wf-record-section');
-  el.classList.toggle('hidden');
-  if (el.classList.contains('hidden')) {
-    document.getElementById('wf-rec-log-section').classList.add('hidden');
-    document.getElementById('wf-rec-log').textContent = '';
-  }
-}
-
-async function startRecording() {
-  const prompt = document.getElementById('wf-rec-prompt').value.trim();
-  if (!prompt) { toast('Enter a task prompt', 'error'); return; }
-
-  const name = document.getElementById('wf-rec-name').value.trim();
-  const desc = document.getElementById('wf-rec-desc').value.trim();
-
-  const btn = document.getElementById('wf-rec-start-btn');
-  btn.disabled = true;
-  btn.textContent = 'Recording...';
-
-  const logEl = document.getElementById('wf-rec-log');
-  const logSection = document.getElementById('wf-rec-log-section');
-  logSection.classList.remove('hidden');
-  logEl.textContent = 'Starting recording...\n';
-
-  recordedSteps = null;
-  recordedMeta = null;
-
-  try {
-    const wfHeaders = { 'Content-Type': 'application/json' };
-    if (getApiKey()) wfHeaders['X-API-Key'] = getApiKey();
-    const res = await fetch(API + '/api/workflows/record', {
-      method: 'POST',
-      headers: wfHeaders,
-      body: JSON.stringify({ prompt, name, description: desc }),
-    });
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const payload = line.slice(6).trim();
-        if (payload === '[DONE]') continue;
-
-        try {
-          const data = JSON.parse(payload);
-
-          // Check for final workflow_result
-          if (data.type === 'workflow_result') {
-            recordedSteps = data.steps;
-            recordedMeta = { name: data.name, description: data.description, recorded_from: data.recorded_from };
-            logEl.textContent += `\n--- Recording complete: ${data.steps.length} steps extracted ---\n`;
-            continue;
-          }
-
-          // Show assistant text or tool use for live feedback
-          if (data.type === 'assistant' && data.message) {
-            const blocks = data.message.content || [];
-            for (const b of blocks) {
-              if (b.type === 'text') {
-                logEl.textContent += b.text + '\n';
-              } else if (b.type === 'tool_use') {
-                logEl.textContent += `[Tool] ${b.name}(${JSON.stringify(b.input).substring(0, 120)})\n`;
-              }
-            }
-          } else if (data.type === 'result') {
-            logEl.textContent += `\n[Result] ${(data.result || '').substring(0, 200)}\n`;
-          }
-        } catch {
-          // Not JSON, skip
-        }
-        logEl.scrollTop = logEl.scrollHeight;
-      }
-    }
-
-    // Show step editor if we got steps
-    if (recordedSteps && recordedSteps.length > 0) {
-      showStepEditor();
-      toast(`Recorded ${recordedSteps.length} steps`);
-    } else {
-      toast('No steps were recorded', 'error');
-    }
-  } catch (e) {
-    toast(`Recording failed: ${e.message}`, 'error');
-    logEl.textContent += `\nERROR: ${e.message}\n`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Start Recording';
-  }
-}
-
-function showStepEditor() {
-  const editor = document.getElementById('wf-step-editor');
-  editor.classList.remove('hidden');
-
-  // Pre-fill name/desc from meta
-  if (recordedMeta) {
-    if (recordedMeta.name) document.getElementById('wf-rec-name').value = recordedMeta.name;
-  }
-
-  document.getElementById('wf-step-inputs').value = '{}';
-  document.getElementById('wf-step-tags').value = '';
-
-  const tbody = document.querySelector('#wf-steps-table tbody');
-  tbody.innerHTML = recordedSteps.map(s => `
-    <tr>
-      <td>${s.seq}</td>
-      <td><code>${esc(s.action)}</code></td>
-      <td>${esc(s.description || '')}</td>
-      <td style="font-size:12px; max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(JSON.stringify(s.params))}</td>
-    </tr>
-  `).join('');
-}
-
-async function saveRecordedWorkflow() {
-  const name = document.getElementById('wf-rec-name').value.trim();
-  if (!name) { toast('Enter a workflow name', 'error'); return; }
-  if (!recordedSteps || !recordedSteps.length) { toast('No steps to save', 'error'); return; }
-
-  let inputSchema = {};
-  try {
-    inputSchema = JSON.parse(document.getElementById('wf-step-inputs').value || '{}');
-  } catch { toast('Invalid input schema JSON', 'error'); return; }
-
-  const tagsRaw = document.getElementById('wf-step-tags').value.trim();
-  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
-
-  try {
-    await api('/api/workflows', {
-      method: 'POST',
-      body: JSON.stringify({
-        name,
-        description: document.getElementById('wf-rec-desc').value.trim(),
-        recorded_from: recordedMeta?.recorded_from || '',
-        input_schema: inputSchema,
-        steps: recordedSteps,
-        tags,
-      }),
-    });
-    toast('Workflow saved');
-    discardRecording();
-    loadWorkflows();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-function discardRecording() {
-  recordedSteps = null;
-  recordedMeta = null;
-  document.getElementById('wf-step-editor').classList.add('hidden');
-  document.getElementById('wf-record-section').classList.add('hidden');
-  document.getElementById('wf-rec-log-section').classList.add('hidden');
-  document.getElementById('wf-rec-log').textContent = '';
-}
-
-async function deleteWorkflow(name) {
-  if (!confirm(`Delete workflow "${name}"?`)) return;
-  try {
-    await api(`/api/workflows/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    toast('Workflow deleted');
-    loadWorkflows();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-async function viewWorkflow(name) {
-  try {
-    const wf = await api(`/api/workflows/${encodeURIComponent(name)}`);
-    // Show in step editor (read-only view)
-    recordedSteps = wf.steps;
-    recordedMeta = { name: wf.name, description: wf.description, recorded_from: wf.recorded_from };
-    document.getElementById('wf-rec-name').value = wf.name;
-    document.getElementById('wf-rec-desc').value = wf.description || '';
-    showStepEditor();
-    document.getElementById('wf-step-inputs').value = JSON.stringify(wf.input_schema || {}, null, 2);
-    document.getElementById('wf-step-tags').value = (wf.tags || []).join(', ');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-async function openRunWorkflow(name) {
-  currentRunWorkflow = name;
-  document.getElementById('wf-run-name').textContent = name;
-  document.getElementById('wf-run-log-section').classList.add('hidden');
-  document.getElementById('wf-run-log').textContent = '';
-
-  // Fetch workflow to build input form
-  try {
-    const wf = await api(`/api/workflows/${encodeURIComponent(name)}`);
-    const inputsDiv = document.getElementById('wf-run-inputs');
-    const schema = wf.input_schema || {};
-    const fields = Object.entries(schema);
-
-    if (fields.length === 0) {
-      inputsDiv.innerHTML = '<p style="color:var(--text2); font-size:13px;">No inputs required.</p>';
-    } else {
-      inputsDiv.innerHTML = fields.map(([key, def]) => `
-        <div class="form-group">
-          <label>${esc(key)}${def.required ? ' *' : ''} <span style="color:var(--text2);font-size:12px;">${esc(def.description || '')}</span></label>
-          <input type="text" id="wf-input-${esc(key)}" data-wf-input="${esc(key)}" placeholder="${esc(def.default || '')}" value="${esc(def.default || '')}">
-        </div>
-      `).join('');
-    }
-
-    document.getElementById('wf-run-section').classList.remove('hidden');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-function closeRunSection() {
-  document.getElementById('wf-run-section').classList.add('hidden');
-  if (wfRunPollInterval) { clearInterval(wfRunPollInterval); wfRunPollInterval = null; }
-}
-
-async function executeWorkflow() {
-  if (!currentRunWorkflow) return;
-
-  // Gather inputs
-  const inputs = {};
-  document.querySelectorAll('[data-wf-input]').forEach(el => {
-    inputs[el.dataset.wfInput] = el.value;
-  });
-
-  const headless = document.getElementById('wf-run-headless').checked;
-  const btn = document.getElementById('wf-run-btn');
-  btn.disabled = true;
-
-  try {
-    const res = await api(`/api/workflows/${encodeURIComponent(currentRunWorkflow)}/run`, {
-      method: 'POST',
-      body: JSON.stringify({ inputs, headless }),
-    });
-    toast(`Workflow started: ${res.run_id}`);
-
-    // Show log and poll
-    const logSection = document.getElementById('wf-run-log-section');
-    logSection.classList.remove('hidden');
-    const logEl = document.getElementById('wf-run-log');
-    logEl.textContent = 'Running...\n';
-
-    if (wfRunPollInterval) clearInterval(wfRunPollInterval);
-
-    async function pollRun() {
-      try {
-        const data = await api(`/api/workflows/runs/${res.run_id}?tail=200`);
-        logEl.textContent = data.log_tail.join('\n') || '(no output yet)';
-        logEl.scrollTop = logEl.scrollHeight;
-        if (data.status !== 'running') {
-          clearInterval(wfRunPollInterval);
-          wfRunPollInterval = null;
-          btn.disabled = false;
-          toast(`Workflow ${data.status}`, data.status === 'completed' ? 'success' : 'error');
-        }
-      } catch { /* ignore */ }
-    }
-
-    pollRun();
-    wfRunPollInterval = setInterval(pollRun, 2000);
-  } catch (e) {
-    toast(e.message, 'error');
-    btn.disabled = false;
-  }
-}
-
-// --- Browser View ---
-function reconnectVNC() {
-  const iframe = document.getElementById('vnc-iframe');
-  iframe.src = '';
-  setTimeout(() => {
-    iframe.src = `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
-  }, 200);
-}
-
-// --- Login ---
-let loginPollInterval = null;
-
-async function loginOpen() {
-  const url = document.getElementById('login-url').value.trim();
-  if (!url) { toast('Enter a URL', 'error'); return; }
-  const label = document.getElementById('login-label').value.trim();
-
-  document.getElementById('login-open-btn').disabled = true;
-  try {
-    const res = await api('/api/login/open', {
-      method: 'POST',
-      body: JSON.stringify({ url, label }),
-    });
-    toast(res.message);
-    refreshLoginStatus();
-    // Start polling status
-    if (loginPollInterval) clearInterval(loginPollInterval);
-    loginPollInterval = setInterval(refreshLoginStatus, 3000);
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    document.getElementById('login-open-btn').disabled = false;
-  }
-}
-
-async function refreshLoginStatus() {
-  try {
-    const data = await api('/api/login/status');
-    const section = document.getElementById('login-active-section');
-    if (data.active) {
-      section.classList.remove('hidden');
-      document.getElementById('login-active-label').textContent = data.label;
-      document.getElementById('login-active-url').textContent = data.url;
-    } else {
-      section.classList.add('hidden');
-      if (loginPollInterval) { clearInterval(loginPollInterval); loginPollInterval = null; }
-    }
-  } catch { /* ignore */ }
-}
-
-async function loginSave() {
-  try {
-    const res = await api('/api/login/save', { method: 'POST' });
-    toast(res.message || `Session saved (${res.cookies_saved} cookies)`);
-    refreshLoginStatus();
-    loadSavedSessions();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-async function loginCancel() {
-  try {
-    await api('/api/login/cancel', { method: 'POST' });
-    toast('Login cancelled');
-    refreshLoginStatus();
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-async function loadSavedSessions() {
-  try {
-    const data = await api('/api/login/sessions');
-    document.getElementById('login-cookie-count').textContent =
-      `${data.cookie_count} cookies stored across ${data.domains.length} domain(s)`;
-    document.getElementById('login-domains').innerHTML = data.domains.map(d =>
-      `<span class="badge badge-completed">${esc(d)}</span>`
-    ).join('');
-  } catch { /* ignore */ }
-}
-
-function switchToBrowser() {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelector('[data-tab="browser"]').classList.add('active');
-  document.getElementById('tab-browser').classList.add('active');
-  if (!vncLoaded) {
-    document.getElementById('vnc-iframe').src =
-      `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
-    vncLoaded = true;
-  }
-}
-
-// --- Files ---
-let currentFilesPath = '';
-
-function buildBreadcrumb(path) {
-  const bc = document.getElementById('files-breadcrumb');
-  let html = '<a href="#" onclick="loadFiles(\'\'); return false;">output</a>';
-  if (path) {
-    const parts = path.split('/');
-    let accumulated = '';
-    for (const part of parts) {
-      accumulated += (accumulated ? '/' : '') + part;
-      const p = accumulated;
-      html += `<span>/</span><a href="#" onclick="loadFiles('${esc(p)}'); return false;">${esc(part)}</a>`;
-    }
-  }
-  bc.innerHTML = html;
-}
-
-async function loadFiles(path) {
-  currentFilesPath = path;
-  closePreview();
-  buildBreadcrumb(path);
-  try {
-    const url = path ? `/api/files?path=${encodeURIComponent(path)}` : '/api/files';
-    const data = await api(url);
-    const tbody = document.querySelector('#files-table tbody');
-    if (!data.entries || !data.entries.length) {
-      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2);text-align:center;padding:32px;">No files</td></tr>';
-      return;
-    }
-    tbody.innerHTML = data.entries.map(f => {
-      if (f.is_dir) {
-        return `<tr>
-          <td><a href="#" onclick="loadFiles('${esc(f.path)}'); return false;" style="color:var(--accent);">${esc(f.name)}/</a></td>
-          <td style="color:var(--text2)">-</td>
-          <td style="color:var(--text2)">${new Date(f.modified).toLocaleString()}</td>
-          <td></td>
-        </tr>`;
-      }
-      return `<tr>
-        <td>${esc(f.name)}</td>
-        <td style="color:var(--text2)">${esc(f.size_fmt)}</td>
-        <td style="color:var(--text2)">${new Date(f.modified).toLocaleString()}</td>
-        <td>
-          <button class="btn btn-sm" style="background:var(--surface2)" onclick="previewFile('${esc(f.path)}')">View</button>
-          <a class="btn btn-sm btn-primary" href="${API}/api/files-download/${encodeURIComponent(f.path)}" download="${esc(f.name)}" style="text-decoration:none;">Download</a>
-        </td>
-      </tr>`;
-    }).join('');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-async function previewFile(path) {
-  try {
-    const data = await api(`/api/files/${encodeURIComponent(path)}`);
-    document.getElementById('file-preview-section').classList.remove('hidden');
-    document.getElementById('preview-filename').textContent = data.name;
-    const dlBtn = document.getElementById('preview-download-btn');
-    dlBtn.onclick = () => { window.open(`${API}/api/files-download/${encodeURIComponent(path)}`, '_blank'); };
-    const el = document.getElementById('file-preview-content');
-    if (data.content != null) {
-      el.textContent = data.content;
-    } else {
-      el.textContent = `(Binary file or too large to preview — ${data.size_fmt})\nUse Download button.`;
-    }
-    el.scrollTop = 0;
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
-
-function closePreview() {
-  document.getElementById('file-preview-section').classList.add('hidden');
-}
-
-// --- Agent ---
+// === LAUNCH: AGENT ===
 let agentAbort = null;
 let agentTimer = null;
 let agentStartTime = null;
@@ -1647,7 +1577,6 @@ async function agentRun() {
       }
     }
 
-    // Show final result if we have one
     if (lastResult) {
       const div = document.createElement('div');
       div.className = 'agent-result-final';
@@ -1662,28 +1591,23 @@ async function agentRun() {
     if (e.name === 'AbortError') {
       div.textContent = 'Stopped by user.';
     } else if (e.message === 'network error' || e.message === 'Failed to fetch') {
-      div.textContent = 'Connection lost — the agent process may have finished or timed out. Check output above for results.';
-      ranOk = true;  // still offer save — the agent likely finished
+      div.textContent = 'Connection lost — the agent process may have finished or timed out.';
+      ranOk = true;
     } else {
       div.textContent = `Error: ${e.message}`;
     }
     output.appendChild(div);
   } finally {
     agentFinish();
-    // Offer to save as workflow if we captured any actionable steps
     if (ranOk) {
       const steps = agentExtractSteps();
-      if (steps.length > 0) {
-        agentShowSave(steps);
-      }
+      if (steps.length > 0) agentShowSave(steps);
     }
   }
 }
 
 function agentRenderEvent(data, output) {
   let lastResult = null;
-
-  // stream-json format: each line is a JSON object with a "type" field
   if (data.type === 'assistant' && data.message) {
     const blocks = data.message.content || [];
     for (const b of blocks) {
@@ -1697,7 +1621,6 @@ function agentRenderEvent(data, output) {
       }
     }
   } else if (data.type === 'tool_result' || data.type === 'result') {
-    // Tool results
     const content = data.content || data.result || '';
     const text = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
     if (data.type === 'result') {
@@ -1705,7 +1628,6 @@ function agentRenderEvent(data, output) {
     } else {
       const div = document.createElement('div');
       div.className = 'agent-tool-result';
-      // Truncate long tool results
       if (text.length > 500) {
         const preview = text.substring(0, 500);
         div.textContent = preview + '...';
@@ -1731,7 +1653,6 @@ function agentRenderEvent(data, output) {
     div.textContent = data.error || JSON.stringify(data);
     output.appendChild(div);
   }
-
   return lastResult;
 }
 
@@ -1763,10 +1684,7 @@ function agentAppendToolCall(output, name, input) {
 }
 
 function agentStop() {
-  if (agentAbort) {
-    agentAbort.abort();
-    agentAbort = null;
-  }
+  if (agentAbort) { agentAbort.abort(); agentAbort = null; }
 }
 
 function agentClear() {
@@ -1784,7 +1702,15 @@ function agentFinish() {
   agentUpdateElapsed();
 }
 
-// --- Agent → Workflow Save ---
+function agentUpdateElapsed() {
+  if (!agentStartTime) return;
+  const secs = Math.floor((Date.now() - agentStartTime) / 1000);
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  document.getElementById('agent-elapsed').textContent = m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+// Agent -> Workflow Save
 const AGENT_SKIP_ACTIONS = new Set([
   'snapshot', 'take_screenshot', 'console_messages', 'network_requests', 'install'
 ]);
@@ -1842,8 +1768,7 @@ function agentShowSave(steps) {
   section.classList.remove('hidden');
   const preview = document.getElementById('agent-save-steps-preview');
   preview.innerHTML = `<strong>${steps.length} replayable step(s):</strong> ` +
-    steps.map(s => `<code>${esc(s.action)}</code>`).join(' → ');
-  // Auto-suggest a name from the prompt
+    steps.map(s => `<code>${esc(s.action)}</code>`).join(' &rarr; ');
   const words = agentLastPrompt.replace(/^Navigate to https?:\/\/[^\s]+\.\s*Then:\s*/i, '')
     .toLowerCase().replace(/[^a-z0-9 ]/g, '').trim().split(/\s+/).slice(0, 4).join('_');
   document.getElementById('agent-save-name').value = words || '';
@@ -1858,14 +1783,11 @@ function agentDismissSave() {
 async function agentSaveWorkflow() {
   const name = document.getElementById('agent-save-name').value.trim();
   if (!name) { toast('Enter a workflow name', 'error'); return; }
-
   const steps = agentExtractSteps();
   if (!steps.length) { toast('No replayable steps found', 'error'); return; }
-
   const desc = document.getElementById('agent-save-desc').value.trim();
   const tagsRaw = document.getElementById('agent-save-tags').value.trim();
   const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
-
   try {
     await api('/api/workflows', {
       method: 'POST',
@@ -1885,25 +1807,658 @@ async function agentSaveWorkflow() {
   }
 }
 
-function agentUpdateElapsed() {
-  if (!agentStartTime) return;
-  const secs = Math.floor((Date.now() - agentStartTime) / 1000);
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  document.getElementById('agent-elapsed').textContent = m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
 // Ctrl+Enter to submit agent prompt
 document.getElementById('agent-prompt').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
-    if (!document.getElementById('agent-run-btn').disabled) {
-      agentRun();
-    }
+    if (!document.getElementById('agent-run-btn').disabled) agentRun();
   }
 });
 
-// --- Init ---
+// === LIBRARY: RECIPES ===
+async function loadRecipes() {
+  try {
+    const recipes = await api('/api/recipes');
+    const tbody = document.querySelector('#recipe-table tbody');
+    if (!recipes.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2);text-align:center;padding:24px;">No recipes yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = recipes.map(r => `
+      <tr>
+        <td><strong>${esc(r.name)}</strong><br><small style="color:var(--text2)">${esc(r.path)}</small></td>
+        <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><small>${esc((r.start_urls || [])[0] || '-')}</small></td>
+        <td>${r.pagination_type || 'None'}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-primary" onclick="runRecipe('${esc(r.path)}')">Run</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteRecipe('${esc(r.path)}')">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function toggleRecipeForm() {
+  document.getElementById('recipe-form').classList.toggle('hidden');
+}
+
+function updatePagFields() {
+  const type = document.getElementById('rf-pag-type').value;
+  document.getElementById('pag-next').classList.toggle('hidden', type !== 'next');
+  document.getElementById('pag-all-links').classList.toggle('hidden', type !== 'all_links');
+  document.getElementById('pag-url-template').classList.toggle('hidden', type !== 'url_template');
+}
+
+async function createRecipe() {
+  const name = document.getElementById('rf-name').value.trim();
+  if (!name) { toast('Name is required', 'error'); return; }
+  const urlsRaw = document.getElementById('rf-urls').value.trim();
+  const urls = urlsRaw.split('\n').map(u => u.trim()).filter(Boolean);
+  if (!urls.length) { toast('At least one URL is required', 'error'); return; }
+  const scope = document.getElementById('rf-scope').value.trim();
+  if (!scope) { toast('List Scope CSS is required', 'error'); return; }
+
+  const body = {
+    name,
+    start_urls: urls,
+    list_scope_css: scope,
+    item_link_css: document.getElementById('rf-item-link').value.trim() || 'a[href]',
+  };
+
+  const pagType = document.getElementById('rf-pag-type').value;
+  if (pagType) {
+    body.pagination_type = pagType;
+    if (pagType === 'next') body.next_css = document.getElementById('rf-next-css').value.trim();
+    if (pagType === 'all_links') body.pagination_scope_css = document.getElementById('rf-pag-scope').value.trim();
+    if (pagType === 'url_template') {
+      body.page_param = document.getElementById('rf-page-param').value.trim();
+      body.page_start = parseInt(document.getElementById('rf-page-start').value) || 1;
+      body.page_end = parseInt(document.getElementById('rf-page-end').value) || 10;
+    }
+  }
+
+  const maxPages = document.getElementById('rf-max-pages').value;
+  const maxItems = document.getElementById('rf-max-items').value;
+  if (maxPages) body.max_list_pages = parseInt(maxPages);
+  if (maxItems) body.max_items = parseInt(maxItems);
+
+  const outItems = document.getElementById('rf-out-items').value.trim();
+  const outPages = document.getElementById('rf-out-pages').value.trim();
+  if (outItems) body.items_jsonl = outItems;
+  if (outPages) body.pages_jsonl = outPages;
+
+  try {
+    await api('/api/recipes', { method: 'POST', body: JSON.stringify(body) });
+    toast('Recipe created');
+    toggleRecipeForm();
+    loadRecipes();
+    ['rf-name','rf-urls','rf-scope','rf-next-css','rf-pag-scope','rf-page-param','rf-out-items','rf-out-pages'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('rf-item-link').value = 'a[href]';
+    document.getElementById('rf-pag-type').value = '';
+    updatePagFields();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteRecipe(path) {
+  if (!confirm(`Delete recipe ${path}?`)) return;
+  try {
+    await api(`/api/recipes/${path}`, { method: 'DELETE' });
+    toast('Recipe deleted');
+    loadRecipes();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function runRecipe(path) {
+  navigateTo('launch', 'launch-crawl');
+  loadCrawlRecipes().then(() => {
+    document.getElementById('crawl-recipe').value = path;
+  });
+}
+
+// === LIBRARY: WORKFLOWS ===
+let recordedSteps = null;
+let recordedMeta = null;
+let wfRunPollInterval = null;
+let currentRunWorkflow = null;
+
+async function loadWorkflows() {
+  try {
+    const workflows = await api('/api/workflows');
+    const tbody = document.querySelector('#wf-table tbody');
+    if (!workflows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text2);text-align:center;padding:24px;">No workflows yet. Click "Record New" to create one.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = workflows.map(w => `
+      <tr>
+        <td><strong>${esc(w.name)}</strong></td>
+        <td style="color:var(--text2); font-size:13px;">${esc(w.description || '-')}</td>
+        <td>${w.step_count}</td>
+        <td>${(w.tags || []).map(t => `<span class="badge badge-completed" style="margin-right:4px;">${esc(t)}</span>`).join('') || '-'}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-primary" onclick="openRunWorkflow('${esc(w.name)}')">Run</button>
+          <button class="btn btn-sm btn-ghost" onclick="viewWorkflow('${esc(w.name)}')">View</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteWorkflow('${esc(w.name)}')">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function toggleRecordSection() {
+  const el = document.getElementById('wf-record-section');
+  el.classList.toggle('hidden');
+  if (el.classList.contains('hidden')) {
+    document.getElementById('wf-rec-log-section').classList.add('hidden');
+    document.getElementById('wf-rec-log').textContent = '';
+  }
+}
+
+async function startRecording() {
+  const prompt = document.getElementById('wf-rec-prompt').value.trim();
+  if (!prompt) { toast('Enter a task prompt', 'error'); return; }
+
+  const name = document.getElementById('wf-rec-name').value.trim();
+  const desc = document.getElementById('wf-rec-desc').value.trim();
+
+  const btn = document.getElementById('wf-rec-start-btn');
+  btn.disabled = true;
+  btn.textContent = 'Recording...';
+
+  const logEl = document.getElementById('wf-rec-log');
+  const logSection = document.getElementById('wf-rec-log-section');
+  logSection.classList.remove('hidden');
+  logEl.textContent = 'Starting recording...\n';
+
+  recordedSteps = null;
+  recordedMeta = null;
+
+  try {
+    const wfHeaders = { 'Content-Type': 'application/json' };
+    if (getApiKey()) wfHeaders['X-API-Key'] = getApiKey();
+    const res = await fetch(API + '/api/workflows/record', {
+      method: 'POST',
+      headers: wfHeaders,
+      body: JSON.stringify({ prompt, name, description: desc }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') continue;
+
+        try {
+          const data = JSON.parse(payload);
+          if (data.type === 'workflow_result') {
+            recordedSteps = data.steps;
+            recordedMeta = { name: data.name, description: data.description, recorded_from: data.recorded_from };
+            logEl.textContent += `\n--- Recording complete: ${data.steps.length} steps extracted ---\n`;
+            continue;
+          }
+          if (data.type === 'assistant' && data.message) {
+            const blocks = data.message.content || [];
+            for (const b of blocks) {
+              if (b.type === 'text') {
+                logEl.textContent += b.text + '\n';
+              } else if (b.type === 'tool_use') {
+                logEl.textContent += `[Tool] ${b.name}(${JSON.stringify(b.input).substring(0, 120)})\n`;
+              }
+            }
+          } else if (data.type === 'result') {
+            logEl.textContent += `\n[Result] ${(data.result || '').substring(0, 200)}\n`;
+          }
+        } catch {
+          // Not JSON
+        }
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    }
+
+    if (recordedSteps && recordedSteps.length > 0) {
+      showStepEditor();
+      toast(`Recorded ${recordedSteps.length} steps`);
+    } else {
+      toast('No steps were recorded', 'error');
+    }
+  } catch (e) {
+    toast(`Recording failed: ${e.message}`, 'error');
+    logEl.textContent += `\nERROR: ${e.message}\n`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Start Recording';
+  }
+}
+
+function showStepEditor() {
+  const editor = document.getElementById('wf-step-editor');
+  editor.classList.remove('hidden');
+  if (recordedMeta) {
+    if (recordedMeta.name) document.getElementById('wf-rec-name').value = recordedMeta.name;
+  }
+  document.getElementById('wf-step-inputs').value = '{}';
+  document.getElementById('wf-step-tags').value = '';
+
+  const tbody = document.querySelector('#wf-steps-table tbody');
+  tbody.innerHTML = recordedSteps.map(s => `
+    <tr>
+      <td>${s.seq}</td>
+      <td><code>${esc(s.action)}</code></td>
+      <td>${esc(s.description || '')}</td>
+      <td style="font-size:12px; max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(JSON.stringify(s.params))}</td>
+    </tr>
+  `).join('');
+}
+
+async function saveRecordedWorkflow() {
+  const name = document.getElementById('wf-rec-name').value.trim();
+  if (!name) { toast('Enter a workflow name', 'error'); return; }
+  if (!recordedSteps || !recordedSteps.length) { toast('No steps to save', 'error'); return; }
+
+  let inputSchema = {};
+  try {
+    inputSchema = JSON.parse(document.getElementById('wf-step-inputs').value || '{}');
+  } catch { toast('Invalid input schema JSON', 'error'); return; }
+
+  const tagsRaw = document.getElementById('wf-step-tags').value.trim();
+  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  try {
+    await api('/api/workflows', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        description: document.getElementById('wf-rec-desc').value.trim(),
+        recorded_from: recordedMeta?.recorded_from || '',
+        input_schema: inputSchema,
+        steps: recordedSteps,
+        tags,
+      }),
+    });
+    toast('Workflow saved');
+    discardRecording();
+    loadWorkflows();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function discardRecording() {
+  recordedSteps = null;
+  recordedMeta = null;
+  document.getElementById('wf-step-editor').classList.add('hidden');
+  document.getElementById('wf-record-section').classList.add('hidden');
+  document.getElementById('wf-rec-log-section').classList.add('hidden');
+  document.getElementById('wf-rec-log').textContent = '';
+}
+
+async function deleteWorkflow(name) {
+  if (!confirm(`Delete workflow "${name}"?`)) return;
+  try {
+    await api(`/api/workflows/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    toast('Workflow deleted');
+    loadWorkflows();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function viewWorkflow(name) {
+  try {
+    const wf = await api(`/api/workflows/${encodeURIComponent(name)}`);
+    recordedSteps = wf.steps;
+    recordedMeta = { name: wf.name, description: wf.description, recorded_from: wf.recorded_from };
+    document.getElementById('wf-rec-name').value = wf.name;
+    document.getElementById('wf-rec-desc').value = wf.description || '';
+    showStepEditor();
+    document.getElementById('wf-step-inputs').value = JSON.stringify(wf.input_schema || {}, null, 2);
+    document.getElementById('wf-step-tags').value = (wf.tags || []).join(', ');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function openRunWorkflow(name) {
+  // Switch to Launch > Workflow Run
+  navigateTo('launch', 'launch-workflow');
+
+  currentRunWorkflow = name;
+  document.getElementById('wf-run-name').textContent = name;
+  document.getElementById('wf-run-log-section').classList.add('hidden');
+  document.getElementById('wf-run-log').textContent = '';
+  document.getElementById('wf-run-placeholder').classList.add('hidden');
+
+  try {
+    const wf = await api(`/api/workflows/${encodeURIComponent(name)}`);
+    const inputsDiv = document.getElementById('wf-run-inputs');
+    const schema = wf.input_schema || {};
+    const fields = Object.entries(schema);
+
+    if (fields.length === 0) {
+      inputsDiv.innerHTML = '<p style="color:var(--text2); font-size:13px;">No inputs required.</p>';
+    } else {
+      inputsDiv.innerHTML = fields.map(([key, def]) => `
+        <div class="form-group">
+          <label>${esc(key)}${def.required ? ' *' : ''} <span style="color:var(--text2);font-size:12px;">${esc(def.description || '')}</span></label>
+          <input type="text" data-wf-input="${esc(key)}" placeholder="${esc(def.default || '')}" value="${esc(def.default || '')}">
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('wf-run-section').classList.remove('hidden');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function closeRunSection() {
+  document.getElementById('wf-run-section').classList.add('hidden');
+  document.getElementById('wf-run-placeholder').classList.remove('hidden');
+  if (wfRunPollInterval) { clearInterval(wfRunPollInterval); wfRunPollInterval = null; }
+}
+
+async function executeWorkflow() {
+  if (!currentRunWorkflow) return;
+  const inputs = {};
+  document.querySelectorAll('[data-wf-input]').forEach(el => {
+    inputs[el.dataset.wfInput] = el.value;
+  });
+  const headless = document.getElementById('wf-run-headless').checked;
+  const btn = document.getElementById('wf-run-btn');
+  btn.disabled = true;
+
+  try {
+    const res = await api(`/api/workflows/${encodeURIComponent(currentRunWorkflow)}/run`, {
+      method: 'POST',
+      body: JSON.stringify({ inputs, headless }),
+    });
+    toast(`Workflow started: ${res.run_id}`);
+
+    const logSection = document.getElementById('wf-run-log-section');
+    logSection.classList.remove('hidden');
+    const logEl = document.getElementById('wf-run-log');
+    logEl.textContent = 'Running...\n';
+
+    if (wfRunPollInterval) clearInterval(wfRunPollInterval);
+
+    async function pollRun() {
+      try {
+        const data = await api(`/api/workflows/runs/${res.run_id}?tail=200`);
+        logEl.textContent = data.log_tail.join('\n') || '(no output yet)';
+        logEl.scrollTop = logEl.scrollHeight;
+        if (data.status !== 'running') {
+          clearInterval(wfRunPollInterval);
+          wfRunPollInterval = null;
+          btn.disabled = false;
+          toast(`Workflow ${data.status}`, data.status === 'completed' ? 'success' : 'error');
+        }
+      } catch { /* ignore */ }
+    }
+
+    pollRun();
+    wfRunPollInterval = setInterval(pollRun, 2000);
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+// === FILES ===
+let currentFilesPath = '';
+
+function buildBreadcrumb(path) {
+  const bc = document.getElementById('files-breadcrumb');
+  let html = '<a href="#" onclick="loadFiles(\'\'); return false;">output</a>';
+  if (path) {
+    const parts = path.split('/');
+    let accumulated = '';
+    for (const part of parts) {
+      accumulated += (accumulated ? '/' : '') + part;
+      const p = accumulated;
+      html += `<span>/</span><a href="#" onclick="loadFiles('${esc(p)}'); return false;">${esc(part)}</a>`;
+    }
+  }
+  bc.innerHTML = html;
+}
+
+async function loadFiles(path) {
+  currentFilesPath = path;
+  closePreview();
+  buildBreadcrumb(path);
+  try {
+    const url = path ? `/api/files?path=${encodeURIComponent(path)}` : '/api/files';
+    const data = await api(url);
+    const tbody = document.querySelector('#files-table tbody');
+    if (!data.entries || !data.entries.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2);text-align:center;padding:32px;">No files</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.entries.map(f => {
+      if (f.is_dir) {
+        return `<tr>
+          <td><a href="#" onclick="loadFiles('${esc(f.path)}'); return false;" style="color:var(--accent);">${esc(f.name)}/</a></td>
+          <td style="color:var(--text2)">-</td>
+          <td style="color:var(--text2)">${new Date(f.modified).toLocaleString()}</td>
+          <td></td>
+        </tr>`;
+      }
+      return `<tr>
+        <td>${esc(f.name)}</td>
+        <td style="color:var(--text2)">${esc(f.size_fmt)}</td>
+        <td style="color:var(--text2)">${new Date(f.modified).toLocaleString()}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-ghost" onclick="previewFile('${esc(f.path)}')">View</button>
+          <a class="btn btn-sm btn-primary" href="${API}/api/files-download/${encodeURIComponent(f.path)}" download="${esc(f.name)}" style="text-decoration:none;">Download</a>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function previewFile(path) {
+  try {
+    const data = await api(`/api/files/${encodeURIComponent(path)}`);
+    document.getElementById('file-preview-section').classList.remove('hidden');
+    document.getElementById('preview-filename').textContent = data.name;
+    const dlBtn = document.getElementById('preview-download-btn');
+    dlBtn.onclick = () => { window.open(`${API}/api/files-download/${encodeURIComponent(path)}`, '_blank'); };
+    const el = document.getElementById('file-preview-content');
+    if (data.content != null) {
+      el.textContent = data.content;
+    } else {
+      el.textContent = `(Binary file or too large to preview — ${data.size_fmt})\nUse Download button.`;
+    }
+    el.scrollTop = 0;
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function closePreview() {
+  document.getElementById('file-preview-section').classList.add('hidden');
+}
+
+// === BROWSER PANEL & BROWSER VIEW ===
+let vncFullLoaded = false;
+const VNC_URL = `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
+
+function toggleBrowserPanel() {
+  const panel = document.getElementById('browser-panel');
+  panel.classList.toggle('open');
+
+  if (panel.classList.contains('open') && !vncLoaded) {
+    document.getElementById('vnc-iframe').src = VNC_URL;
+    vncLoaded = true;
+  }
+}
+
+function loadBrowserView() {
+  if (!vncFullLoaded) {
+    document.getElementById('vnc-iframe-full').src = VNC_URL;
+    vncFullLoaded = true;
+  }
+}
+
+function reconnectVNC() {
+  // Reconnect whichever VNC iframe is currently visible
+  const panelIframe = document.getElementById('vnc-iframe');
+  const fullIframe = document.getElementById('vnc-iframe-full');
+  const activeSection = document.getElementById('section-browser');
+  const isFullView = activeSection && activeSection.classList.contains('active');
+
+  if (isFullView && fullIframe) {
+    fullIframe.src = '';
+    setTimeout(() => { fullIframe.src = VNC_URL; }, 200);
+  } else if (panelIframe) {
+    panelIframe.src = '';
+    setTimeout(() => { panelIframe.src = VNC_URL; }, 200);
+  }
+}
+
+// Drag handle for panel resize
+(function() {
+  const drag = document.getElementById('browser-panel-drag');
+  const panel = document.getElementById('browser-panel');
+  let startY, startH;
+
+  drag.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startY = e.clientY;
+    startH = panel.offsetHeight;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  function onMove(e) {
+    const delta = startY - e.clientY;
+    const newH = Math.max(200, Math.min(window.innerHeight - 100, startH + delta));
+    panel.style.height = newH + 'px';
+  }
+
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+})();
+
+// === SETTINGS & LOGIN ===
+function openSettings() {
+  document.getElementById('settings-overlay').classList.add('open');
+  document.getElementById('settings-drawer').classList.add('open');
+  document.getElementById('settings-api-key').value = getApiKey();
+  refreshLoginStatus();
+  loadSavedSessions();
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+  document.getElementById('settings-drawer').classList.remove('open');
+}
+
+function saveApiKey() {
+  const key = document.getElementById('settings-api-key').value.trim();
+  setApiKey(key);
+  toast(key ? 'API key saved' : 'API key cleared');
+}
+
+let loginPollInterval = null;
+
+async function loginOpen() {
+  const url = document.getElementById('login-url').value.trim();
+  if (!url) { toast('Enter a URL', 'error'); return; }
+  const label = document.getElementById('login-label').value.trim();
+
+  document.getElementById('login-open-btn').disabled = true;
+  try {
+    const res = await api('/api/login/open', {
+      method: 'POST',
+      body: JSON.stringify({ url, label }),
+    });
+    toast(res.message);
+    refreshLoginStatus();
+    if (loginPollInterval) clearInterval(loginPollInterval);
+    loginPollInterval = setInterval(refreshLoginStatus, 3000);
+    // Auto-open browser panel
+    const panel = document.getElementById('browser-panel');
+    if (!panel.classList.contains('open')) toggleBrowserPanel();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    document.getElementById('login-open-btn').disabled = false;
+  }
+}
+
+async function refreshLoginStatus() {
+  try {
+    const data = await api('/api/login/status');
+    const section = document.getElementById('login-active-section');
+    if (data.active) {
+      section.classList.remove('hidden');
+      document.getElementById('login-active-label').textContent = data.label;
+      document.getElementById('login-active-url').textContent = data.url;
+    } else {
+      section.classList.add('hidden');
+      if (loginPollInterval) { clearInterval(loginPollInterval); loginPollInterval = null; }
+    }
+  } catch { /* ignore */ }
+}
+
+async function loginSave() {
+  try {
+    const res = await api('/api/login/save', { method: 'POST' });
+    toast(res.message || `Session saved (${res.cookies_saved} cookies)`);
+    refreshLoginStatus();
+    loadSavedSessions();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function loginCancel() {
+  try {
+    await api('/api/login/cancel', { method: 'POST' });
+    toast('Login cancelled');
+    refreshLoginStatus();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function loadSavedSessions() {
+  try {
+    const data = await api('/api/login/sessions');
+    document.getElementById('login-cookie-count').textContent =
+      `${data.cookie_count} cookies across ${data.domains.length} domain(s)`;
+    document.getElementById('login-domains').innerHTML = data.domains.map(d =>
+      `<span class="badge badge-completed">${esc(d)}</span>`
+    ).join('');
+  } catch { /* ignore */ }
+}
+
+// === INIT ===
 refreshDashboard();
 </script>
 </body>
