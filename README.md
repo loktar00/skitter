@@ -1,60 +1,27 @@
 # Web Crawler
 
-A flexible web crawling and browser automation platform with CloudFlare bypass, recipe-driven scraping, workflow replay, and HTTP API access. Can be controlled by any AI agent via MCP or REST API.
+A browser-as-a-service platform for web crawling, scraping, and browser automation. Control it from any AI agent via MCP, CLI, or REST API.
 
-## Features
+## Quick Start
 
-- **General-purpose crawling** — BFS link discovery with depth control and domain filtering
-- **Recipe-driven list crawling** — YAML-configured scraping of paginated list pages
-- **CloudFlare bypass** — dual-engine approach using curl-cffi and Playwright
-- **Anti-detection** — webdriver property override, randomized viewport, human-like delays
-- **Remote browser control** — persistent browser sessions an external agent can drive (navigate, click, type, screenshot, snapshot)
-- **MCP server** — built-in MCP endpoint at `/mcp` so any MCP-compatible agent can connect with just a URL
-- **HTTP API** — full REST API for crawling, login management, recipe CRUD, file browsing, and workflow replay
-- **Dashboard** — web UI for managing crawls, recipes, logins, and output files
-- **Session persistence** — saved cookies for authenticated scraping (YouTube, Facebook, etc.)
-- **Workflow system** — record browser automations and replay them without AI
-- **Resume capability** — state tracking to pick up interrupted crawls
+### 1. Install
 
-## Quick Setup (Container)
-
-Run one command on a fresh Debian/Ubuntu container:
+Run on a fresh Debian/Ubuntu container (or any server):
 
 ```bash
 curl -sL https://raw.githubusercontent.com/loktar00/crawler/main/setup-crawler.sh | bash
 ```
 
-This installs everything, sets up systemd services, and starts the dashboard.
+This installs everything, sets up systemd services (`xvfb`, `crawler-api`, `crawler-data`), and prints your dashboard URL.
 
-## Connecting an AI Agent
+### 2. Connect an Agent
 
-The crawler exposes an MCP endpoint so external agents can control it remotely — no agent CLI needed inside the container.
+Pick your method — all three hit the same API:
 
-### Claude Code
-
-Run this on the machine where Claude Code is installed:
-
-```bash
-claude mcp add crawler -- python /path/to/mcp_server.py \
-    --api-url http://<container-ip>:8080 \
-    --api-key <your-key>
-```
-
-`mcp_server.py` is a single-file, zero-dependency MCP bridge. Copy it from the repo or clone locally — it just makes HTTP calls to the crawler API.
-
-Alternatively, set environment variables instead of CLI args:
-
-```bash
-export CRAWLER_API_URL=http://<container-ip>:8080
-export CRAWLER_API_KEY=<your-key>
-claude mcp add crawler -- python /path/to/mcp_server.py
-```
-
-### Hermes Agent
-
-No file copying needed. Hermes connects directly to the built-in MCP endpoint. Add to your Hermes config:
+**MCP (Hermes, or any remote MCP agent)** — just a URL, nothing to install:
 
 ```yaml
+# Add to your agent's MCP config
 mcp_servers:
   crawler:
     url: "http://<container-ip>:8080/mcp"
@@ -62,249 +29,196 @@ mcp_servers:
       X-API-Key: "<your-key>"
 ```
 
-Hermes will discover all tools at startup. Use `/reload-mcp` in Hermes to refresh after config changes.
-
-### CLI (Any Agent with Shell Access)
-
-For agents that prefer shell commands over MCP, or for manual use and scripting:
+**MCP (Claude Code)** — single-file stdio bridge:
 
 ```bash
-# Set once
+claude mcp add crawler -- python /path/to/mcp_server.py \
+    --api-url http://<container-ip>:8080 --api-key <your-key>
+```
+
+**CLI (any agent with shell access, or manual use):**
+
+```bash
 export CRAWLER_API_URL=http://<container-ip>:8080
 export CRAWLER_API_KEY=<your-key>
-
-# Then use
-python crawler_cli.py health
-python crawler_cli.py recipes list
-python crawler_cli.py crawl run example_quotes.yaml
 python crawler_cli.py browser open
 python crawler_cli.py browser navigate https://youtube.com
 python crawler_cli.py browser snapshot
-python crawler_cli.py browser click --text "Notifications"
-python crawler_cli.py browser close
-python crawler_cli.py login open https://youtube.com --label YouTube
-python crawler_cli.py login save
 ```
 
-`crawler_cli.py` is a single file with zero dependencies — copy it anywhere and point it at the API.
+Run `python crawler_cli.py` with no args to see all available commands.
 
-### Any MCP-Compatible Agent
+### 3. Set Up Auth (Optional)
 
-Any agent that supports remote MCP servers over HTTP can connect to:
-
+```bash
+# Edit the service to add an API key
+nano /etc/systemd/system/crawler-api.service
+# Add: Environment=CRAWLER_API_KEY=your-secret-key
+systemctl daemon-reload && systemctl restart crawler-api
 ```
-POST http://<container-ip>:8080/mcp
-Header: X-API-Key: <your-key>
-Body: JSON-RPC (MCP protocol)
-```
 
-### Available Tools (MCP + CLI)
+When set, API routes require `X-API-Key` header. Dashboard and `/health` are always public.
 
-Once connected, the agent gets these tools:
+## What It Does
+
+| Capability | How | AI Required? |
+|------------|-----|:---:|
+| Crawl websites (BFS with depth/domain control) | `crawler_run_full` | No |
+| Scrape paginated lists via YAML recipes | `crawler_run_recipe` | No |
+| Drive a live browser (navigate, click, type, read) | `browser_*` tools | No |
+| Manage tabs (open, close, switch, list) | `browser_tab_*` tools | No |
+| Record browser actions as replayable workflows | `browser_record_*` tools | Once |
+| Replay saved workflows | `crawler_run_workflow` | No |
+| Log into sites (YouTube, Facebook, etc.) | `crawler_login_*` tools | No |
+| Build scraping recipes by inspecting pages | Agent + `browser_*` tools | Once |
+
+## Available Tools
+
+All tools are available via MCP, CLI, and REST API.
+
+### Crawling
 
 | Tool | Description |
 |------|-------------|
-| `crawler_health` | Check API server status |
-| `crawler_list_recipes` | List scraping recipes |
+| `crawler_run_recipe` | Start a recipe-based list crawl |
+| `crawler_run_full` | Start a full HTML crawl from URLs |
+| `crawler_task_status` | Check crawl progress and logs |
+| `crawler_list_tasks` | List all crawl tasks |
+
+### Recipes
+
+| Tool | Description |
+|------|-------------|
+| `crawler_list_recipes` | List all scraping recipes |
 | `crawler_get_recipe` | Get recipe YAML content |
 | `crawler_create_recipe` | Create a new recipe |
-| `crawler_run_recipe` | Start a recipe-based crawl |
-| `crawler_run_full` | Start a full HTML crawl |
-| `crawler_task_status` | Check crawl progress |
-| `crawler_list_tasks` | List all crawl tasks |
+
+### Browser
+
+| Tool | Description |
+|------|-------------|
+| `browser_open` | Open browser session (loads saved cookies) |
+| `browser_close` | Close browser, save cookies |
+| `browser_status` | Check browser state and recording status |
+| `browser_navigate` | Navigate to a URL |
+| `browser_click` | Click by CSS selector or visible text |
+| `browser_type` | Type into a form field |
+| `browser_press_key` | Press a keyboard key (Enter, Tab, etc.) |
+| `browser_snapshot` | Read current page as text |
+| `browser_screenshot` | Take a screenshot (base64 PNG) |
+| `browser_get_links` | Get all links on the page |
+| `browser_scroll` | Scroll up or down |
+| `browser_evaluate` | Run JavaScript, return result |
+
+### Tabs
+
+| Tool | Description |
+|------|-------------|
+| `browser_tab_open` | Open a new tab (optionally at a URL) |
+| `browser_tab_close` | Close current tab |
+| `browser_tab_list` | List all tabs with URL, title, active state |
+| `browser_tab_switch` | Switch to a tab by index |
+
+### Recording
+
+| Tool | Description |
+|------|-------------|
+| `browser_record_start` | Start recording browser actions |
+| `browser_record_stop` | Stop recording, return captured steps |
+| `browser_record_save` | Save as a replayable workflow |
+
+### Login & Sessions
+
+| Tool | Description |
+|------|-------------|
 | `crawler_login_open` | Open browser for manual login |
 | `crawler_login_save` | Save login session cookies |
 | `crawler_login_cancel` | Cancel login session |
 | `crawler_login_status` | Check login session state |
 | `crawler_login_sessions` | List saved login domains |
+
+### Files & Workflows
+
+| Tool | Description |
+|------|-------------|
 | `crawler_list_files` | Browse output files |
 | `crawler_get_file` | Get file contents |
 | `crawler_list_workflows` | List saved workflows |
 | `crawler_run_workflow` | Run a saved workflow |
-| `browser_open` | Open a persistent browser (loads saved cookies) |
-| `browser_navigate` | Navigate to a URL |
-| `browser_click` | Click by CSS selector or text |
-| `browser_type` | Type into a form field |
-| `browser_press_key` | Press a keyboard key |
-| `browser_snapshot` | Read current page text |
-| `browser_screenshot` | Take a screenshot |
-| `browser_get_links` | Get all links on the page |
-| `browser_scroll` | Scroll the page |
-| `browser_evaluate` | Run JavaScript |
-| `browser_close` | Close browser and save cookies |
-| `browser_status` | Check if browser is active |
-| `browser_record_start` | Start recording browser actions |
-| `browser_record_stop` | Stop recording, return captured steps |
-| `browser_record_save` | Save recorded steps as a replayable workflow |
+| `crawler_health` | Check API server status |
 
 ## Agent Skills
 
-The `skills/` directory contains instruction prompts that teach agents how to use the platform effectively. Feed these to your agent as system prompts or instructions.
+The `skills/` directory contains instruction prompts that teach agents how to use the platform. Feed these to your agent as system prompts.
 
-| Skill | Description |
-|-------|-------------|
-| [browser-automation.md](skills/browser-automation.md) | Explore-record-replay pattern. Agent figures out a task, records the clean steps, saves as a workflow. Future runs skip AI entirely. |
-| [recipe-builder.md](skills/recipe-builder.md) | Automatic recipe creation. Agent inspects a page's DOM, discovers CSS selectors, builds and tests a scraping recipe. |
-| [site-login.md](skills/site-login.md) | Guided login flow. Agent opens the site, walks the user through VNC-based login, saves the session for future use. |
+| Skill | What it teaches |
+|-------|-----------------|
+| [browser-automation](skills/browser-automation.md) | **Explore-record-replay**: figure out a task, record the clean steps, save as a workflow. Next time it runs instantly without AI. |
+| [recipe-builder](skills/recipe-builder.md) | **Auto-create recipes**: inspect a page's DOM, discover CSS selectors, build and test a scraping recipe. |
+| [site-login](skills/site-login.md) | **Login flow**: open a site, guide the user through VNC login, save cookies for future use. |
 
-## API Authentication
+## Architecture
 
-Set `CRAWLER_API_KEY` to require authentication:
-
-```bash
-# In the systemd service or environment
-Environment=CRAWLER_API_KEY=your-secret-key
-
-# Or when starting manually
-CRAWLER_API_KEY=your-secret-key python -m uvicorn api_server:app --host 0.0.0.0 --port 8080
 ```
-
-When set, all API routes require an `X-API-Key` header. The dashboard and `/health` are always public.
-
-## Installation (Manual)
-
-```bash
-pip install -r requirements.txt
-playwright install
-
-# For the API server
-pip install -r requirements-api.txt
+┌─────────────────────────────────────────────────┐
+│  AI Agent (Claude, Hermes, any LLM)             │
+│  connects via MCP, CLI, or REST                 │
+└──────────────┬──────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────┐
+│  Crawler API Server (port 8080)                 │
+│  ┌──────────┬───────────┬────────────────────┐  │
+│  │ REST API │ MCP /mcp  │ Dashboard UI       │  │
+│  └──────────┴───────────┴────────────────────┘  │
+│  ┌──────────────────────────────────────────┐   │
+│  │ Browser Session (Playwright + Chromium)  │   │
+│  │ • Anti-detection  • Cookie persistence   │   │
+│  │ • Tab management  • Action recording     │   │
+│  └──────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────┐   │
+│  │ Crawl Engine    │ Workflow Engine        │   │
+│  │ • Full HTML     │ • Record from agent    │   │
+│  │ • Recipe-based  │ • Replay without AI    │   │
+│  └──────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────┐
+│  Data Server (port 8081)                        │
+│  Serves output/ via JSON API + browsable HTML   │
+└─────────────────────────────────────────────────┘
 ```
 
 ## Project Structure
 
 ```
-crawler.py            # Core crawler (general + list modes)
-crawler_config.py     # Default configuration
-list_crawler.py       # List crawl mode engine
-recipe_loader.py      # YAML recipe parser
-validate_recipe.py    # Recipe schema validator
-api_server.py         # FastAPI server (port 8080) — REST API + MCP endpoint
-data_server.py        # FastAPI file server for output (port 8081)
+api_server.py         # FastAPI server — REST API, MCP endpoint, browser session
 mcp_server.py         # Standalone MCP bridge (stdio, for Claude Code)
-crawler_cli.py        # CLI tool (for shell-based agents or manual use)
-browser_helper.py     # CLI for browser interactions
-workflow_engine.py    # Workflow replay engine
-workflow_models.py    # Workflow data models (Pydantic)
-workflow_recorder.py  # Records agent MCP calls into replayable workflows
-setup-crawler.sh      # One-shot container setup script
+crawler_cli.py        # CLI tool (shell-based agents, scripting, manual use)
+crawler.py            # Core crawler (general + list modes)
+list_crawler.py       # Recipe-driven list crawl engine
+recipe_loader.py      # YAML recipe parser
+workflow_engine.py    # Replay workflows via Playwright (no AI)
+workflow_recorder.py  # Parse agent actions into workflow steps
+setup-crawler.sh      # One-shot container setup
 static/index.html     # Dashboard UI
+skills/               # Agent instruction prompts
 recipes/              # YAML scraping recipes
-output/               # Crawled data (JSONL, gitignored)
-tests/                # Unit tests
+output/               # Crawled data (gitignored)
 ```
 
-## Quick Start
-
-### General Crawling
-
-```bash
-# Crawl a single URL
-python crawler.py --url https://example.com
-
-# Crawl with depth and domain limits
-python crawler.py --url https://example.com --max-depth 2 --domains example.com
-
-# Crawl from a file of URLs
-python crawler.py --file urls.txt
-
-# Run headless
-python crawler.py --url https://example.com --headless
-```
-
-### Recipe-Driven List Crawling
-
-Create a YAML recipe, validate it, then run:
-
-```bash
-# Validate
-python validate_recipe.py recipes/example_quotes.yaml
-
-# Dry run (preview without saving)
-python crawler.py --mode list --recipe recipes/example_quotes.yaml --dry-run
-
-# Real run
-python crawler.py --mode list --recipe recipes/example_quotes.yaml --headless
-```
-
-See [QUICK_START.md](QUICK_START.md) for a step-by-step guide and [LIST_CRAWL_GUIDE.md](LIST_CRAWL_GUIDE.md) for full recipe documentation.
-
-## API Server
-
-```bash
-# Start the server
-python -m uvicorn api_server:app --host 0.0.0.0 --port 8080
-
-# Or via systemd
-systemctl start crawler-api
-```
-
-### REST Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check (includes `agent_available` status) |
-| `POST` | `/mcp` | MCP JSON-RPC endpoint for remote agents |
-| `POST` | `/api/crawl` | Start a recipe-based crawl |
-| `POST` | `/api/crawl/full` | Start a full HTML crawl |
-| `GET` | `/api/crawl/{id}` | Get crawl task status and logs |
-| `GET/POST` | `/api/recipes` | List or create recipes |
-| `POST` | `/api/login/open` | Open browser for manual login |
-| `POST` | `/api/login/save` | Save session cookies |
-| `GET` | `/api/login/sessions` | List saved login domains |
-| `POST` | `/api/browser/open` | Open persistent browser session |
-| `POST` | `/api/browser/navigate` | Navigate browser to URL |
-| `POST` | `/api/browser/click` | Click element |
-| `POST` | `/api/browser/snapshot` | Read page content as text |
-| `POST` | `/api/browser/screenshot` | Take screenshot |
-| `POST` | `/api/browser/close` | Close browser, save cookies |
-| `GET` | `/api/files` | Browse output files |
-| `GET/POST` | `/api/workflows` | List or save workflows |
-| `POST` | `/api/workflows/{name}/run` | Run a saved workflow |
-
-### Example
-
-```bash
-# Run a crawl
-curl -X POST http://localhost:8080/api/crawl \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: your-key" \
-  -d '{"recipe_path": "example_quotes.yaml", "headless": true}'
-
-# Open browser for login
-curl -X POST http://localhost:8080/api/login/open \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: your-key" \
-  -d '{"url": "https://youtube.com", "label": "YouTube"}'
-```
-
-## Data Server
-
-Serves the `output/` directory over HTTP with a browsable UI and JSON API.
-
-```bash
-systemctl start crawler-data
-```
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/files` | List files as JSON |
-| `GET` | `/api/files/{path}` | List subdirectory or download file |
-| `GET` | `/browse/` | Browsable HTML directory listing |
-
-## Recipe System
-
-Recipes are YAML files that define how to scrape paginated list pages:
+## Recipe Format
 
 ```yaml
 start_urls:
   - "https://example.com/items"
 
-list_scope_css: "div.item"
-item_link_css: "a.item-link"
+list_scope_css: "div.item"          # Repeated item container
+item_link_css: "a.item-link"        # Link within each item
 
 pagination:
-  type: next              # next, all_links, or url_template
+  type: next                        # next, all_links, or url_template
   next_css: "a.next"
 
 limits:
@@ -316,54 +230,40 @@ output:
   pages_jsonl: "output/pages.jsonl"
 ```
 
-## Workflow System
-
-Record browser interactions as replayable workflows:
-
-1. **Record** — An agent performs a task via Playwright, and the steps are captured as a replayable workflow
-2. **Replay** — The workflow engine executes saved workflows with template interpolation (`{{input.field_name}}`), human-like delays, and anti-detection — no AI needed
-
-## Configuration
-
-Edit `crawler_config.py` for default settings:
-
-```python
-START_URLS = ["https://example.com"]
-MAX_DEPTH = 2
-ALLOWED_DOMAINS = ["example.com"]
-HEADLESS = False
-RATE_LIMIT_DELAY = 2.5
-```
-
-Environment variables:
+## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CRAWLER_API_KEY` | *(none)* | API key for authentication (optional) |
-| `AGENT_BIN` | `claude` | Path to agent CLI (only needed for `/task` endpoints) |
-| `CRAWLER_WORKING_DIR` | `/opt/crawler` | Working directory |
-| `CRAWLER_DATA_DIR` | `/opt/crawler/output` | Output directory |
+| `CRAWLER_API_KEY` | *(none)* | API key for authentication |
 | `CRAWLER_API_PORT` | `8080` | API server port |
 | `CRAWLER_DATA_PORT` | `8081` | Data server port |
+| `CRAWLER_WORKING_DIR` | `/opt/crawler` | Working directory |
+| `CRAWLER_DATA_DIR` | `/opt/crawler/output` | Output directory |
 | `CRAWLER_VENV_PYTHON` | `sys.executable` | Python binary path |
+| `AGENT_BIN` | `claude` | Agent CLI (only for `/task` endpoints) |
 
-## Authenticated Scraping
+## CLI Reference
 
-For sites requiring login (YouTube, Facebook, etc.):
-
-1. Use the dashboard Login tab, or call `POST /api/login/open` with the site URL
-2. Complete login via VNC (display `:99`) or the dashboard Browser View tab
-3. Click "Save Session" or call `POST /api/login/save`
-4. Cookies persist in `output/browser_session/cookies.json` — all future crawls and browser sessions use them automatically
-
-## Testing
-
-```bash
-python -m unittest tests.test_extractors -v
-python validate_recipe.py recipes/example_quotes.yaml
+```
+python crawler_cli.py                 # Show all commands
+python crawler_cli.py health          # Check server status
+python crawler_cli.py recipes list    # List recipes
+python crawler_cli.py crawl run <recipe>
+python crawler_cli.py browser open    # Start browser session
+python crawler_cli.py browser navigate <url>
+python crawler_cli.py browser snapshot
+python crawler_cli.py browser click --text "Click me"
+python crawler_cli.py browser tab open <url>
+python crawler_cli.py browser tab list
+python crawler_cli.py browser record start
+python crawler_cli.py browser record save <name>
+python crawler_cli.py workflows run <name>
+python crawler_cli.py login open <url> --label "Site"
+python crawler_cli.py login save
+python crawler_cli.py files list
 ```
 
-## Command Line Reference
+## Crawler CLI Reference
 
 ```
 General mode:
@@ -372,17 +272,15 @@ General mode:
   --file FILE              File containing URLs
   --max-depth N            Maximum crawl depth
   --domains DOMAIN [...]   Allowed domains
-  --output DIR             Output directory (default: crawled_pages)
   --headless / --visible   Browser visibility
 
 List mode:
-  --mode list              Enable list crawl mode
-  --recipe FILE            YAML recipe file
-  --dry-run                Preview without saving
-  --force                  Ignore previous state
-  --verbose-selectors      Log CSS selector match counts
+  --mode list --recipe FILE    YAML recipe file
+  --dry-run                    Preview without saving
+  --force                      Ignore previous state
+  --verbose-selectors          Log CSS selector match counts
 
 Debug:
   --dump-html URL          Save page HTML to debug_dump.html
-  --screenshot URL         Save page screenshot to debug_screenshot.png
+  --screenshot URL         Save screenshot to debug_screenshot.png
 ```
