@@ -22,15 +22,31 @@ from typing import Optional
 import mimetypes
 
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+# --- API Key Auth ---
+
+API_KEY = os.environ.get("CRAWLER_API_KEY", "")
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_api_key(key: str = Security(_api_key_header)):
+    """If CRAWLER_API_KEY is set, require it on all API requests."""
+    if not API_KEY:
+        return  # No key configured — allow all requests
+    if key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
 
 app = FastAPI(
     title="Crawler API",
     description="HTTP API for sending tasks to an AI agent",
     version="1.0.0",
+    dependencies=[Depends(verify_api_key)],
 )
 
 # --- Configuration ---

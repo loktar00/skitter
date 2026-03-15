@@ -18,6 +18,7 @@ REPO_URL="${CRAWLER_REPO:-https://github.com/loktar00/crawler.git}"
 DISPLAY_NUM="${DISPLAY_NUM:-99}"
 API_PORT="${CRAWLER_API_PORT:-8080}"
 DATA_PORT="${CRAWLER_DATA_PORT:-8081}"
+CRAWLER_API_KEY="${CRAWLER_API_KEY:-}"
 
 # Get container IP for final output
 CONTAINER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -131,6 +132,7 @@ Environment=CRAWLER_WORKING_DIR=${CRAWLER_DIR}
 Environment=CRAWLER_DATA_DIR=${CRAWLER_DIR}/output
 Environment=CRAWLER_VENV_PYTHON=${CRAWLER_DIR}/venv/bin/python
 Environment=CRAWLER_API_PORT=${API_PORT}
+Environment=CRAWLER_API_KEY=${CRAWLER_API_KEY}
 ExecStart=${CRAWLER_DIR}/venv/bin/python -m uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT}
 Restart=always
 RestartSec=10
@@ -200,6 +202,15 @@ echo "  Useful commands:"
 echo "    systemctl status crawler-api"
 echo "    systemctl restart crawler-api"
 echo "    journalctl -u crawler-api -f"
+echo ""
+echo "  Connect an external agent (Claude Code):"
+echo "    claude mcp add crawler -- python mcp_server.py \\"
+echo "        --api-url http://${CONTAINER_IP:-<your-ip>}:${API_PORT} \\"
+if [ -n "$CRAWLER_API_KEY" ]; then
+echo "        --api-key ${CRAWLER_API_KEY}"
+else
+echo "        # To require auth: re-run with CRAWLER_API_KEY=<secret> bash setup-crawler.sh"
+fi
 echo ""
 echo "  Quick test:"
 echo "    cd $CRAWLER_DIR && source venv/bin/activate"
