@@ -801,6 +801,38 @@ with sync_playwright() as p:
                 time.sleep(0.5)
                 result = {{"scrolled": direction, "amount": amount}}
 
+            elif action == "tab_open":
+                new_page = ctx.new_page()
+                new_page.add_init_script("Object.defineProperty(navigator, \\'webdriver\\', {{get: () => undefined}});")
+                url = cmd.get("url", "")
+                if url:
+                    new_page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                    time.sleep(random.uniform(1.0, 2.0))
+                page = new_page
+                result = {{"opened": True, "url": page.url, "title": page.title(), "tab_count": len(ctx.pages)}}
+
+            elif action == "tab_close":
+                if len(ctx.pages) <= 1:
+                    result = {{"error": "Cannot close the last tab"}}
+                else:
+                    page.close()
+                    page = ctx.pages[-1]
+                    result = {{"closed": True, "url": page.url, "title": page.title(), "tab_count": len(ctx.pages)}}
+
+            elif action == "tab_list":
+                tabs = []
+                for i, p in enumerate(ctx.pages):
+                    tabs.append({{"index": i, "url": p.url, "title": p.title(), "active": p == page}})
+                result = {{"tabs": tabs, "tab_count": len(ctx.pages)}}
+
+            elif action == "tab_switch":
+                idx = cmd.get("index", 0)
+                if 0 <= idx < len(ctx.pages):
+                    page = ctx.pages[idx]
+                    result = {{"switched": True, "index": idx, "url": page.url, "title": page.title()}}
+                else:
+                    result = {{"error": f"Invalid tab index {{idx}}, have {{len(ctx.pages)}} tabs"}}
+
             elif action == "save_cookies":
                 save_cookies()
                 result = {{"saved": True}}
@@ -969,6 +1001,34 @@ async def browser_scroll(req: dict):
 async def browser_evaluate(req: dict):
     """Run JavaScript in the browser and return the result."""
     return await _browser_cmd({"action": "evaluate", "expression": req["expression"]})
+
+
+@app.post("/api/browser/tab/open")
+async def browser_tab_open(req: dict = None):
+    """Open a new tab, optionally navigating to a URL."""
+    req = req or {}
+    cmd = {"action": "tab_open"}
+    if req.get("url"):
+        cmd["url"] = req["url"]
+    return await _browser_cmd(cmd)
+
+
+@app.post("/api/browser/tab/close")
+async def browser_tab_close():
+    """Close the current tab and switch to the last remaining tab."""
+    return await _browser_cmd({"action": "tab_close"})
+
+
+@app.get("/api/browser/tab/list")
+async def browser_tab_list():
+    """List all open tabs with their URLs and titles."""
+    return await _browser_cmd({"action": "tab_list"})
+
+
+@app.post("/api/browser/tab/switch")
+async def browser_tab_switch(req: dict):
+    """Switch to a tab by index."""
+    return await _browser_cmd({"action": "tab_switch", "index": req.get("index", 0)})
 
 
 @app.post("/api/browser/close")
@@ -1778,6 +1838,18 @@ async def _mcp_call_tool(name: str, args: dict):
 
         elif name == "browser_evaluate":
             return await browser_evaluate({"expression": args["expression"]})
+
+        elif name == "browser_tab_open":
+            return await browser_tab_open({"url": args.get("url", "")})
+
+        elif name == "browser_tab_close":
+            return await browser_tab_close()
+
+        elif name == "browser_tab_list":
+            return await browser_tab_list()
+
+        elif name == "browser_tab_switch":
+            return await browser_tab_switch({"index": args["index"]})
 
         elif name == "browser_close":
             return await browser_close()

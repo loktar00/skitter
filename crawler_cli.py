@@ -107,6 +107,10 @@ Commands:
   browser scroll [--direction up|down] [--amount N]
                                       Scroll the page
   browser eval <expression>           Run JavaScript, return result
+  browser tab open [url]              Open a new tab (optionally at URL)
+  browser tab close                   Close current tab
+  browser tab list                    List all open tabs
+  browser tab switch <index>          Switch to tab by index
 
   browser record start                Start recording browser actions
   browser record stop                 Stop recording, show captured steps
@@ -203,6 +207,16 @@ def main():
     bscroll.add_argument("--amount", type=int, default=500)
     beval = browser_sub.add_parser("eval", help="Run JavaScript")
     beval.add_argument("expression", help="JavaScript expression")
+
+    # --- browser tab ---
+    btab = browser_sub.add_parser("tab", help="Manage browser tabs")
+    btab_sub = btab.add_subparsers(dest="tab_action", required=True)
+    btab_open = btab_sub.add_parser("open", help="Open a new tab")
+    btab_open.add_argument("url", nargs="?", default="", help="URL to open (optional)")
+    btab_sub.add_parser("close", help="Close current tab")
+    btab_sub.add_parser("list", help="List all tabs")
+    btab_switch = btab_sub.add_parser("switch", help="Switch to tab by index")
+    btab_switch.add_argument("index", type=int, help="Tab index")
 
     # --- browser record ---
     brec = browser_sub.add_parser("record", help="Record browser actions")
@@ -311,6 +325,16 @@ def main():
             _out(call("/api/browser/scroll", method="POST", body={"direction": args.direction, "amount": args.amount}))
         elif args.action == "eval":
             _out(call("/api/browser/evaluate", method="POST", body={"expression": args.expression}))
+        elif args.action == "tab":
+            if args.tab_action == "open":
+                body = {"url": args.url} if args.url else {}
+                _out(call("/api/browser/tab/open", method="POST", body=body))
+            elif args.tab_action == "close":
+                _out(call("/api/browser/tab/close", method="POST"))
+            elif args.tab_action == "list":
+                _out(call("/api/browser/tab/list"))
+            elif args.tab_action == "switch":
+                _out(call("/api/browser/tab/switch", method="POST", body={"index": args.index}))
         elif args.action == "record":
             if args.rec_action == "start":
                 _out(call("/api/browser/record/start", method="POST"))

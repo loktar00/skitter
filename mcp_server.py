@@ -316,6 +316,38 @@ TOOLS = [
         },
     },
     {
+        "name": "browser_tab_open",
+        "description": "Open a new browser tab, optionally navigating to a URL. The new tab becomes active.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "URL to open in the new tab (optional)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "browser_tab_close",
+        "description": "Close the current tab. Switches to the last remaining tab. Cannot close the last tab.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_tab_list",
+        "description": "List all open tabs with their index, URL, title, and which is active.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_tab_switch",
+        "description": "Switch to a different tab by its index (from browser_tab_list).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "index": {"type": "integer", "description": "Tab index to switch to"},
+            },
+            "required": ["index"],
+        },
+    },
+    {
         "name": "browser_close",
         "description": "Close the persistent browser session and save cookies.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
