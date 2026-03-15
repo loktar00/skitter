@@ -49,6 +49,24 @@ RECIPES_DIR = Path(os.environ.get("CRAWLER_RECIPES_DIR", os.path.join(WORKING_DI
 VENV_PYTHON = os.environ.get("CRAWLER_VENV_PYTHON", sys.executable)
 XDISPLAY = os.environ.get("DISPLAY", ":99")
 
+
+def _agent_available() -> bool:
+    """Check if the agent CLI binary is installed and reachable."""
+    import shutil
+    return shutil.which(AGENT_BIN) is not None
+
+
+def _require_agent():
+    """Raise 503 if agent CLI is not installed."""
+    if not _agent_available():
+        raise HTTPException(
+            status_code=503,
+            detail=f"Agent CLI '{AGENT_BIN}' is not installed on this server. "
+                   f"Install it or set AGENT_BIN to your agent binary. "
+                   f"Crawl, login, recipe, and workflow replay endpoints work without it.",
+        )
+
+
 # --- In-memory storage ---
 
 sessions: dict[str, dict] = {}
@@ -198,12 +216,18 @@ async def run_agent(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "agent_available": _agent_available(),
+        "agent_bin": AGENT_BIN,
+    }
 
 
 @app.post("/task", response_model=TaskResponse)
 async def run_task(req: TaskRequest):
     """Send a task prompt to the agent and get the response."""
+    _require_agent()
     start = asyncio.get_event_loop().time()
     result, session_id = await run_agent(
         prompt=req.prompt,
@@ -234,6 +258,7 @@ MCP_PROFILE_DIR = Path(DATA_DIR) / "browser_session" / "mcp_profile"
 @app.post("/task/stream")
 async def run_task_stream(req: TaskRequest):
     """Send a task prompt to the agent and stream the response as SSE."""
+    _require_agent()
 
     async def event_generator():
         tools = req.allowed_tools or DEFAULT_ALLOWED_TOOLS.split(",")
@@ -280,6 +305,7 @@ async def run_task_stream(req: TaskRequest):
 @app.post("/task/continue", response_model=TaskResponse)
 async def continue_task(req: ContinueRequest):
     """Continue a previous conversation by session_id."""
+    _require_agent()
     if req.session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -1019,6 +1045,7 @@ async def record_workflow(req: WorkflowRecordRequest):
     Playwright MCP tools. Returns SSE stream with progress, then final
     workflow steps.
     """
+    _require_agent()
     from workflow_recorder import stream_to_steps
 
     async def event_generator():
