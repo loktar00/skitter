@@ -410,6 +410,15 @@
     font-size: 12px;
   }
 
+  /* === BROWSER VIEW (full section) === */
+  .vnc-frame-full {
+    width: 100%;
+    height: calc(100vh - 140px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #000;
+  }
+
   /* === BROWSER PANEL === */
   .browser-panel {
     position: fixed;
@@ -628,6 +637,10 @@
     <button class="nav-item" data-section="files">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span class="nav-label">Files</span>
+    </button>
+    <button class="nav-item" data-section="browser">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span class="nav-label">Browser View</span>
     </button>
   </nav>
   <div class="sidebar-footer">
@@ -1047,6 +1060,15 @@
       </div>
     </div>
 
+    <!-- ====== SECTION: BROWSER VIEW ====== -->
+    <div class="section" id="section-browser">
+      <div class="section-header">
+        <h2>Browser View (VNC)</h2>
+        <button class="btn btn-sm btn-primary" onclick="reconnectVNC()">Reconnect</button>
+      </div>
+      <iframe id="vnc-iframe-full" class="vnc-frame-full" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
+    </div>
+
   </div>
 </div>
 
@@ -1216,6 +1238,7 @@ function navigateTo(section, sub) {
   if (section === 'launch') loadCrawlRecipes();
   if (section === 'library') { loadRecipes(); loadWorkflows(); }
   if (section === 'files') loadFiles('');
+  if (section === 'browser') loadBrowserView();
 
   if (sub) {
     // Activate the sub-pill
@@ -2278,24 +2301,41 @@ function closePreview() {
   document.getElementById('file-preview-section').classList.add('hidden');
 }
 
-// === BROWSER PANEL ===
+// === BROWSER PANEL & BROWSER VIEW ===
+let vncFullLoaded = false;
+const VNC_URL = `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
+
 function toggleBrowserPanel() {
   const panel = document.getElementById('browser-panel');
   panel.classList.toggle('open');
 
   if (panel.classList.contains('open') && !vncLoaded) {
-    document.getElementById('vnc-iframe').src =
-      `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
+    document.getElementById('vnc-iframe').src = VNC_URL;
     vncLoaded = true;
   }
 }
 
+function loadBrowserView() {
+  if (!vncFullLoaded) {
+    document.getElementById('vnc-iframe-full').src = VNC_URL;
+    vncFullLoaded = true;
+  }
+}
+
 function reconnectVNC() {
-  const iframe = document.getElementById('vnc-iframe');
-  iframe.src = '';
-  setTimeout(() => {
-    iframe.src = `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
-  }, 200);
+  // Reconnect whichever VNC iframe is currently visible
+  const panelIframe = document.getElementById('vnc-iframe');
+  const fullIframe = document.getElementById('vnc-iframe-full');
+  const activeSection = document.getElementById('section-browser');
+  const isFullView = activeSection && activeSection.classList.contains('active');
+
+  if (isFullView && fullIframe) {
+    fullIframe.src = '';
+    setTimeout(() => { fullIframe.src = VNC_URL; }, 200);
+  } else if (panelIframe) {
+    panelIframe.src = '';
+    setTimeout(() => { panelIframe.src = VNC_URL; }, 200);
+  }
 }
 
 // Drag handle for panel resize
