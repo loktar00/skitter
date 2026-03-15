@@ -1566,6 +1566,101 @@ async def dashboard_redirect():
     return RedirectResponse(url="/dashboard/")
 
 
+# --- MCP over HTTP ---
+# Serves the MCP protocol at /mcp so remote agents (Hermes, etc.) can
+# connect directly via URL — no file copying or local installs needed.
+#
+# Hermes config:
+#   mcp_servers:
+#     crawler:
+#       url: "http://<container-ip>:8080/mcp"
+#       headers:
+#         X-API-Key: "your-key"
+
+from mcp_server import TOOLS as MCP_TOOLS, handle_tool as mcp_handle_tool
+
+
+@app.post("/mcp")
+async def mcp_endpoint(request: dict):
+    """
+    MCP JSON-RPC endpoint. Handles initialize, tools/list, tools/call.
+    Agents connect here as a remote MCP server.
+    """
+    msg_id = request.get("id")
+    method = request.get("method", "")
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "crawler", "version": "1.0.0"},
+            },
+        }
+
+    elif method == "notifications/initialized":
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+
+    elif method == "tools/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "result": {"tools": MCP_TOOLS},
+        }
+
+    elif method == "tools/call":
+        params = request.get("params", {})
+        tool_name = params.get("name", "")
+        tool_args = params.get("arguments", {})
+
+        # Call the tool handler — it makes HTTP calls back to our own API
+        # Pass the real API key so internal calls pass auth
+        local_url = f"http://127.0.0.1:{os.environ.get('CRAWLER_API_PORT', '8080')}"
+        try:
+            result = mcp_handle_tool(tool_name, tool_args, local_url, API_KEY)
+            text = json.dumps(result, indent=2) if not isinstance(result, str) else result
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "content": [{"type": "text", "text": text}],
+                },
+            }
+        except Exception as e:
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "content": [{"type": "text", "text": f"Error: {e}"}],
+                    "isError": True,
+                },
+            }
+
+    elif method == "ping":
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+
+    else:
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {"code": -32601, "message": f"Method not found: {method}"},
+        }
+
+
+# Also serve MCP via SSE for agents that expect that transport
+@app.get("/mcp/sse")
+async def mcp_sse_info():
+    """Info endpoint for SSE-based MCP clients."""
+    return {
+        "message": "POST JSON-RPC requests to /mcp",
+        "protocol": "MCP",
+        "version": "2024-11-05",
+        "tools": len(MCP_TOOLS),
+    }
+
+
 # --- Static files mount (must be last) ---
 
 static_dir = Path(os.path.join(WORKING_DIR, "static"))
