@@ -109,6 +109,19 @@ Once connected, the agent gets these tools:
 | `browser_evaluate` | Run JavaScript |
 | `browser_close` | Close browser and save cookies |
 | `browser_status` | Check if browser is active |
+| `browser_record_start` | Start recording browser actions |
+| `browser_record_stop` | Stop recording, return captured steps |
+| `browser_record_save` | Save recorded steps as a replayable workflow |
+
+## Agent Skills
+
+The `skills/` directory contains instruction prompts that teach agents how to use the platform effectively. Feed these to your agent as system prompts or instructions.
+
+| Skill | Description |
+|-------|-------------|
+| [browser-automation.md](skills/browser-automation.md) | Explore-record-replay pattern. Agent figures out a task, records the clean steps, saves as a workflow. Future runs skip AI entirely. |
+| [recipe-builder.md](skills/recipe-builder.md) | Automatic recipe creation. Agent inspects a page's DOM, discovers CSS selectors, builds and tests a scraping recipe. |
+| [site-login.md](skills/site-login.md) | Guided login flow. Agent opens the site, walks the user through VNC-based login, saves the session for future use. |
 
 ## API Authentication
 
