@@ -74,10 +74,76 @@ def _out(data):
         print(json.dumps(data, indent=2))
 
 
+HELP_TEXT = """Crawler CLI — control the crawler API from the command line
+
+Usage: crawler_cli.py [--api-url URL] [--api-key KEY] <command> [args...]
+
+Commands:
+
+  health                              Check API server status
+
+  recipes list                        List all scraping recipes
+  recipes get <path>                  Get recipe content
+  recipes create '<json>'             Create recipe from JSON
+  recipes delete <path>               Delete a recipe
+
+  crawl run <recipe> [--visible]      Run a recipe-based crawl
+  crawl full <url>... [--max-depth N] [--domains D...]
+                                      Run a full HTML crawl
+  crawl list                          List all crawl tasks
+  crawl status <task_id> [--tail N]   Get crawl task status + logs
+
+  browser open                        Open browser (loads saved cookies)
+  browser close                       Close browser, save cookies
+  browser status                      Check browser state + recording status
+  browser navigate <url>              Navigate to URL
+  browser click --text "text"         Click element by visible text
+  browser click --selector "css"      Click element by CSS selector
+  browser type <selector> <text>      Type into a form field
+  browser key <key>                   Press a key (Enter, Tab, Escape, etc.)
+  browser snapshot                    Read current page text content
+  browser screenshot                  Take screenshot (base64 PNG)
+  browser links                       Get all links on the page
+  browser scroll [--direction up|down] [--amount N]
+                                      Scroll the page
+  browser eval <expression>           Run JavaScript, return result
+
+  browser record start                Start recording browser actions
+  browser record stop                 Stop recording, show captured steps
+  browser record save <name> [--description "..."]
+                                      Save recording as replayable workflow
+
+  workflows list                      List saved workflows
+  workflows get <name>                Get workflow JSON
+  workflows run <name> [--inputs '{}'] [--visible]
+                                      Run a saved workflow
+  workflows delete <name>             Delete a workflow
+
+  files list [path]                   List output files
+  files get <path>                    Get file content
+
+  login open <url> [--label "name"]   Open browser for manual login
+  login save                          Save login session cookies
+  login cancel                        Cancel login session
+  login status                        Check login session state
+  login sessions                      List saved login domains
+
+Environment variables:
+  CRAWLER_API_URL                     API base URL (default: http://localhost:8080)
+  CRAWLER_API_KEY                     API key for authentication
+"""
+
+
 def main():
+    # Show help if no args or "help" is the first arg
+    if len(sys.argv) < 2 or sys.argv[1] in ("help", "--help", "-h", "/?"):
+        print(HELP_TEXT)
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
         description="Crawler CLI — control the crawler API from the command line",
         usage="%(prog)s [--api-url URL] [--api-key KEY] <command> ...",
+        add_help=False,
     )
     parser.add_argument("--api-url", default=os.environ.get("CRAWLER_API_URL", "http://localhost:8080"))
     parser.add_argument("--api-key", default=os.environ.get("CRAWLER_API_KEY", ""))
