@@ -219,27 +219,111 @@ TOOLS = [
             "required": ["name"],
         },
     },
+    # --- Live browser session tools ---
     {
-        "name": "crawler_screenshot",
-        "description": "Take a screenshot of a URL using the browser helper.",
+        "name": "browser_open",
+        "description": "Open a persistent browser session on the server. Loads saved login cookies automatically. Must be called before other browser_ tools.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_navigate",
+        "description": "Navigate the browser to a URL.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "url": {"type": "string", "description": "URL to screenshot"},
+                "url": {"type": "string", "description": "URL to navigate to"},
             },
             "required": ["url"],
         },
     },
     {
-        "name": "crawler_dump_html",
-        "description": "Dump the raw HTML of a URL (useful for building CSS selectors for recipes).",
+        "name": "browser_click",
+        "description": "Click an element by CSS selector or visible text.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "url": {"type": "string", "description": "URL to dump"},
+                "selector": {"type": "string", "description": "CSS selector to click"},
+                "text": {"type": "string", "description": "Visible text to click (alternative to selector)"},
             },
-            "required": ["url"],
+            "required": [],
         },
+    },
+    {
+        "name": "browser_type",
+        "description": "Type text into a form field identified by CSS selector.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "selector": {"type": "string", "description": "CSS selector of the input field"},
+                "text": {"type": "string", "description": "Text to type"},
+            },
+            "required": ["selector", "text"],
+        },
+    },
+    {
+        "name": "browser_press_key",
+        "description": "Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Key to press, e.g. 'Enter', 'Tab', 'Escape'"},
+            },
+            "required": ["key"],
+        },
+    },
+    {
+        "name": "browser_snapshot",
+        "description": "Get the current page's text content, URL, and title. Use this to read what's on screen.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_screenshot",
+        "description": "Take a screenshot of the current page. Returns base64-encoded PNG.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "full_page": {"type": "boolean", "description": "Capture the full scrollable page (default: false)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "browser_get_links",
+        "description": "Get all links on the current page with their text and URLs.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_scroll",
+        "description": "Scroll the page up or down.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "direction": {"type": "string", "enum": ["up", "down"], "description": "Scroll direction"},
+                "amount": {"type": "integer", "description": "Pixels to scroll (default: 500)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "browser_evaluate",
+        "description": "Run JavaScript in the browser and return the result.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "expression": {"type": "string", "description": "JavaScript expression to evaluate"},
+            },
+            "required": ["expression"],
+        },
+    },
+    {
+        "name": "browser_close",
+        "description": "Close the persistent browser session and save cookies.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_status",
+        "description": "Check if a browser session is currently active.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
 ]
 
@@ -310,14 +394,51 @@ def handle_tool(name: str, args: dict, api_url: str, api_key: str) -> Any:
         body = {"inputs": args.get("inputs", {}), "headless": args.get("headless", True)}
         return call(f"/api/workflows/{args['name']}/run", method="POST", body=body)
 
-    elif name == "crawler_screenshot":
-        # Use the crawl endpoint to trigger a screenshot via browser_helper
-        body = {"prompt": f"Take a screenshot of {args['url']}", "timeout": 60}
-        return call("/task", method="POST", body=body)
+    # --- Browser session tools ---
 
-    elif name == "crawler_dump_html":
-        body = {"prompt": f"Dump the HTML of {args['url']}", "timeout": 60}
-        return call("/task", method="POST", body=body)
+    elif name == "browser_open":
+        return call("/api/browser/open", method="POST")
+
+    elif name == "browser_navigate":
+        return call("/api/browser/navigate", method="POST", body={"url": args["url"]})
+
+    elif name == "browser_click":
+        body = {}
+        if args.get("selector"):
+            body["selector"] = args["selector"]
+        if args.get("text"):
+            body["text"] = args["text"]
+        return call("/api/browser/click", method="POST", body=body)
+
+    elif name == "browser_type":
+        return call("/api/browser/type", method="POST", body={"selector": args["selector"], "text": args["text"]})
+
+    elif name == "browser_press_key":
+        return call("/api/browser/press_key", method="POST", body={"key": args["key"]})
+
+    elif name == "browser_snapshot":
+        return call("/api/browser/snapshot", method="POST")
+
+    elif name == "browser_screenshot":
+        return call("/api/browser/screenshot", method="POST", body={"full_page": args.get("full_page", False)})
+
+    elif name == "browser_get_links":
+        return call("/api/browser/get_links", method="POST")
+
+    elif name == "browser_scroll":
+        return call("/api/browser/scroll", method="POST", body={
+            "direction": args.get("direction", "down"),
+            "amount": args.get("amount", 500),
+        })
+
+    elif name == "browser_evaluate":
+        return call("/api/browser/evaluate", method="POST", body={"expression": args["expression"]})
+
+    elif name == "browser_close":
+        return call("/api/browser/close", method="POST")
+
+    elif name == "browser_status":
+        return call("/api/browser/status")
 
     return {"error": f"Unknown tool: {name}"}
 

@@ -653,6 +653,306 @@ async def list_saved_sessions():
         return {"domains": [], "cookie_count": 0}
 
 
+# --- Persistent Browser Session ---
+# Keeps a browser open across requests so an external agent can drive it
+# interactively: navigate, click, type, take snapshots, etc.
+
+browser_session: dict = {"proc": None, "status": "closed"}
+
+
+def _browser_script() -> str:
+    """Python script that runs in a subprocess, keeps a browser alive,
+    and accepts JSON commands on stdin, returning JSON results on stdout."""
+    return f'''
+import json, sys, signal, time, random, base64, traceback
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+COOKIES_FILE = Path("{COOKIES_FILE}")
+MCP_PROFILE = Path("{MCP_PROFILE_DIR}")
+MCP_PROFILE.mkdir(parents=True, exist_ok=True)
+
+with sync_playwright() as p:
+    vw = 1920 + random.randint(-50, 50)
+    vh = 1080 + random.randint(-50, 50)
+
+    ctx = p.chromium.launch_persistent_context(
+        user_data_dir=str(MCP_PROFILE),
+        headless=False,
+        args=[
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+        ],
+        viewport={{"width": vw, "height": vh}},
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        locale="en-US",
+        timezone_id="America/New_York",
+    )
+
+    if COOKIES_FILE.exists():
+        try:
+            cookies = json.loads(COOKIES_FILE.read_text())
+            ctx.add_cookies(cookies)
+        except Exception:
+            pass
+
+    page = ctx.pages[0] if ctx.pages else ctx.new_page()
+    page.add_init_script("Object.defineProperty(navigator, \\'webdriver\\', {{get: () => undefined}});")
+
+    print(json.dumps({{"ready": True}}), flush=True)
+
+    def save_cookies():
+        try:
+            COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+            c = ctx.cookies()
+            COOKIES_FILE.write_text(json.dumps(c, indent=2))
+        except Exception:
+            pass
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            cmd = json.loads(line)
+            action = cmd.get("action", "")
+            result = {{}}
+
+            if action == "navigate":
+                page.goto(cmd["url"], wait_until="domcontentloaded", timeout=60000)
+                time.sleep(random.uniform(1.0, 2.5))
+                result = {{"url": page.url, "title": page.title()}}
+
+            elif action == "click":
+                sel = cmd.get("selector", "")
+                text = cmd.get("text", "")
+                if sel:
+                    page.locator(sel).first.click(timeout=10000)
+                elif text:
+                    page.get_by_text(text, exact=False).first.click(timeout=10000)
+                time.sleep(random.uniform(0.5, 1.5))
+                result = {{"url": page.url, "title": page.title()}}
+
+            elif action == "type":
+                sel = cmd.get("selector", "")
+                text = cmd.get("text", "")
+                if sel:
+                    page.locator(sel).first.fill(text, timeout=10000)
+                result = {{"typed": text}}
+
+            elif action == "press_key":
+                page.keyboard.press(cmd.get("key", "Enter"))
+                result = {{"key": cmd.get("key", "Enter")}}
+
+            elif action == "snapshot":
+                # Get accessible page content as text
+                title = page.title()
+                url = page.url
+                text = page.evaluate("document.body.innerText")
+                # Truncate to avoid huge responses
+                if len(text) > 20000:
+                    text = text[:20000] + "\\n... (truncated)"
+                result = {{"url": url, "title": title, "text": text}}
+
+            elif action == "screenshot":
+                raw = page.screenshot(full_page=cmd.get("full_page", False))
+                b64 = base64.b64encode(raw).decode("ascii")
+                result = {{"url": page.url, "screenshot_base64": b64, "size": len(raw)}}
+
+            elif action == "get_links":
+                links = page.evaluate("""
+                    () => Array.from(document.querySelectorAll('a[href]')).map(a => ({{
+                        text: a.innerText.trim().substring(0, 200),
+                        href: a.href
+                    }}))
+                """)
+                result = {{"url": page.url, "links": links}}
+
+            elif action == "evaluate":
+                val = page.evaluate(cmd.get("expression", "document.title"))
+                result = {{"value": val}}
+
+            elif action == "wait":
+                secs = cmd.get("seconds", 2)
+                time.sleep(secs)
+                result = {{"waited": secs}}
+
+            elif action == "scroll":
+                direction = cmd.get("direction", "down")
+                amount = cmd.get("amount", 500)
+                if direction == "down":
+                    page.evaluate(f"window.scrollBy(0, {{amount}})")
+                elif direction == "up":
+                    page.evaluate(f"window.scrollBy(0, -{{amount}})")
+                time.sleep(0.5)
+                result = {{"scrolled": direction, "amount": amount}}
+
+            elif action == "save_cookies":
+                save_cookies()
+                result = {{"saved": True}}
+
+            elif action == "close":
+                save_cookies()
+                ctx.close()
+                print(json.dumps({{"closed": True}}), flush=True)
+                sys.exit(0)
+
+            else:
+                result = {{"error": f"Unknown action: {{action}}"}}
+
+            print(json.dumps(result), flush=True)
+
+        except Exception as e:
+            print(json.dumps({{"error": str(e), "traceback": traceback.format_exc()}}), flush=True)
+'''
+
+
+@app.post("/api/browser/open")
+async def browser_open():
+    """Open a persistent browser session. Loads saved cookies."""
+    proc = browser_session.get("proc")
+    if proc and proc.returncode is None:
+        return {"status": "already_open", "message": "Browser session already active."}
+
+    script = _browser_script()
+    proc = await asyncio.create_subprocess_exec(
+        VENV_PYTHON, "-c", script,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=WORKING_DIR,
+        env={**os.environ, "DISPLAY": XDISPLAY},
+    )
+
+    try:
+        line = await asyncio.wait_for(proc.stdout.readline(), timeout=30)
+        data = json.loads(line.decode("utf-8", errors="replace").strip())
+        if not data.get("ready"):
+            raise Exception("Browser did not report ready")
+    except asyncio.TimeoutError:
+        proc.kill()
+        stderr = await proc.stderr.read()
+        await proc.wait()
+        err = stderr.decode("utf-8", errors="replace").strip()
+        raise HTTPException(status_code=500, detail=f"Browser failed to start: {err}")
+
+    browser_session["proc"] = proc
+    browser_session["status"] = "open"
+    return {"status": "open", "message": "Browser session started with saved cookies."}
+
+
+async def _browser_cmd(cmd: dict) -> dict:
+    """Send a command to the persistent browser and return the result."""
+    proc = browser_session.get("proc")
+    if not proc or proc.returncode is not None:
+        raise HTTPException(status_code=400, detail="No active browser session. Call /api/browser/open first.")
+
+    try:
+        proc.stdin.write((json.dumps(cmd) + "\n").encode())
+        await proc.stdin.drain()
+        line = await asyncio.wait_for(proc.stdout.readline(), timeout=120)
+        return json.loads(line.decode("utf-8", errors="replace").strip())
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Browser command timed out")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Browser command failed: {e}")
+
+
+@app.post("/api/browser/navigate")
+async def browser_navigate(req: dict):
+    """Navigate to a URL."""
+    return await _browser_cmd({"action": "navigate", "url": req["url"]})
+
+
+@app.post("/api/browser/click")
+async def browser_click(req: dict):
+    """Click an element by CSS selector or visible text."""
+    cmd = {"action": "click"}
+    if req.get("selector"):
+        cmd["selector"] = req["selector"]
+    elif req.get("text"):
+        cmd["text"] = req["text"]
+    else:
+        raise HTTPException(status_code=400, detail="Provide 'selector' or 'text'")
+    return await _browser_cmd(cmd)
+
+
+@app.post("/api/browser/type")
+async def browser_type(req: dict):
+    """Type text into an element by CSS selector."""
+    return await _browser_cmd({"action": "type", "selector": req["selector"], "text": req["text"]})
+
+
+@app.post("/api/browser/press_key")
+async def browser_press_key(req: dict):
+    """Press a keyboard key (e.g. Enter, Tab, Escape)."""
+    return await _browser_cmd({"action": "press_key", "key": req.get("key", "Enter")})
+
+
+@app.post("/api/browser/snapshot")
+async def browser_snapshot():
+    """Get the current page text content, URL, and title."""
+    return await _browser_cmd({"action": "snapshot"})
+
+
+@app.post("/api/browser/screenshot")
+async def browser_screenshot(req: dict = None):
+    """Take a screenshot. Returns base64-encoded PNG."""
+    req = req or {}
+    return await _browser_cmd({"action": "screenshot", "full_page": req.get("full_page", False)})
+
+
+@app.post("/api/browser/get_links")
+async def browser_get_links():
+    """Get all links on the current page."""
+    return await _browser_cmd({"action": "get_links"})
+
+
+@app.post("/api/browser/scroll")
+async def browser_scroll(req: dict):
+    """Scroll the page. Direction: 'up' or 'down'. Amount in pixels."""
+    return await _browser_cmd({
+        "action": "scroll",
+        "direction": req.get("direction", "down"),
+        "amount": req.get("amount", 500),
+    })
+
+
+@app.post("/api/browser/evaluate")
+async def browser_evaluate(req: dict):
+    """Run JavaScript in the browser and return the result."""
+    return await _browser_cmd({"action": "evaluate", "expression": req["expression"]})
+
+
+@app.post("/api/browser/close")
+async def browser_close():
+    """Close the persistent browser session and save cookies."""
+    proc = browser_session.get("proc")
+    if not proc or proc.returncode is not None:
+        browser_session["status"] = "closed"
+        return {"status": "already_closed"}
+
+    try:
+        result = await _browser_cmd({"action": "close"})
+    except Exception:
+        proc.kill()
+        await proc.wait()
+    browser_session["status"] = "closed"
+    browser_session["proc"] = None
+    return {"status": "closed"}
+
+
+@app.get("/api/browser/status")
+async def browser_status():
+    """Check if a browser session is active."""
+    proc = browser_session.get("proc")
+    alive = proc is not None and proc.returncode is None
+    if not alive:
+        browser_session["status"] = "closed"
+    return {"active": alive, "status": browser_session["status"]}
+
+
 # --- Recipe CRUD ---
 
 
