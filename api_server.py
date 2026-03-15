@@ -1577,7 +1577,126 @@ async def dashboard_redirect():
 #       headers:
 #         X-API-Key: "your-key"
 
-from mcp_server import TOOLS as MCP_TOOLS, handle_tool as mcp_handle_tool
+from mcp_server import TOOLS as MCP_TOOLS
+
+
+async def _mcp_call_tool(name: str, args: dict):
+    """
+    Handle MCP tool calls by calling API route functions directly.
+    No HTTP loopback — avoids single-thread deadlock.
+    """
+    try:
+        # --- Crawler tools ---
+        if name == "crawler_health":
+            return await health()
+
+        elif name == "crawler_list_recipes":
+            return await list_recipes()
+
+        elif name == "crawler_get_recipe":
+            return await get_recipe(args["path"])
+
+        elif name == "crawler_create_recipe":
+            return await create_recipe(RecipeCreate(**args))
+
+        elif name == "crawler_run_recipe":
+            req = CrawlRequest(recipe_path=args["recipe_path"], headless=args.get("headless", True))
+            return await start_crawl(req)
+
+        elif name == "crawler_run_full":
+            req = FullCrawlRequest(
+                urls=args["urls"],
+                max_depth=args.get("max_depth", 2),
+                allowed_domains=args.get("allowed_domains", []),
+                headless=args.get("headless", True),
+            )
+            return await start_full_crawl(req)
+
+        elif name == "crawler_task_status":
+            return await get_crawl_task(args["task_id"], tail=args.get("tail", 50))
+
+        elif name == "crawler_list_tasks":
+            return await list_crawl_tasks()
+
+        elif name == "crawler_login_open":
+            req = LoginOpenRequest(url=args["url"], label=args.get("label", ""))
+            return await login_open(req)
+
+        elif name == "crawler_login_save":
+            return await login_save()
+
+        elif name == "crawler_login_cancel":
+            return await login_cancel()
+
+        elif name == "crawler_login_status":
+            return await login_status()
+
+        elif name == "crawler_login_sessions":
+            return await list_saved_sessions()
+
+        elif name == "crawler_list_files":
+            return await list_output_files(path=args.get("path", ""))
+
+        elif name == "crawler_get_file":
+            return await get_output_file_info(args["path"])
+
+        elif name == "crawler_list_workflows":
+            return await list_workflows()
+
+        elif name == "crawler_run_workflow":
+            req = WorkflowRunRequest(inputs=args.get("inputs", {}), headless=args.get("headless", True))
+            return await run_workflow(args["name"], req)
+
+        # --- Browser session tools ---
+        elif name == "browser_open":
+            return await browser_open()
+
+        elif name == "browser_navigate":
+            return await browser_navigate({"url": args["url"]})
+
+        elif name == "browser_click":
+            body = {}
+            if args.get("selector"):
+                body["selector"] = args["selector"]
+            if args.get("text"):
+                body["text"] = args["text"]
+            return await browser_click(body)
+
+        elif name == "browser_type":
+            return await browser_type({"selector": args["selector"], "text": args["text"]})
+
+        elif name == "browser_press_key":
+            return await browser_press_key({"key": args["key"]})
+
+        elif name == "browser_snapshot":
+            return await browser_snapshot()
+
+        elif name == "browser_screenshot":
+            return await browser_screenshot({"full_page": args.get("full_page", False)})
+
+        elif name == "browser_get_links":
+            return await browser_get_links()
+
+        elif name == "browser_scroll":
+            return await browser_scroll({
+                "direction": args.get("direction", "down"),
+                "amount": args.get("amount", 500),
+            })
+
+        elif name == "browser_evaluate":
+            return await browser_evaluate({"expression": args["expression"]})
+
+        elif name == "browser_close":
+            return await browser_close()
+
+        elif name == "browser_status":
+            return await browser_status()
+
+        else:
+            return {"error": f"Unknown tool: {name}"}
+
+    except HTTPException as e:
+        return {"error": e.detail}
 
 
 @app.post("/mcp")
@@ -1615,11 +1734,8 @@ async def mcp_endpoint(request: dict):
         tool_name = params.get("name", "")
         tool_args = params.get("arguments", {})
 
-        # Call the tool handler — it makes HTTP calls back to our own API
-        # Pass the real API key so internal calls pass auth
-        local_url = f"http://127.0.0.1:{os.environ.get('CRAWLER_API_PORT', '8080')}"
         try:
-            result = mcp_handle_tool(tool_name, tool_args, local_url, API_KEY)
+            result = await _mcp_call_tool(tool_name, tool_args)
             text = json.dumps(result, indent=2) if not isinstance(result, str) else result
             return {
                 "jsonrpc": "2.0",
@@ -1647,18 +1763,6 @@ async def mcp_endpoint(request: dict):
             "id": msg_id,
             "error": {"code": -32601, "message": f"Method not found: {method}"},
         }
-
-
-# Also serve MCP via SSE for agents that expect that transport
-@app.get("/mcp/sse")
-async def mcp_sse_info():
-    """Info endpoint for SSE-based MCP clients."""
-    return {
-        "message": "POST JSON-RPC requests to /mcp",
-        "protocol": "MCP",
-        "version": "2024-11-05",
-        "tools": len(MCP_TOOLS),
-    }
 
 
 # --- Static files mount (must be last) ---
