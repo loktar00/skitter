@@ -1,4 +1,4 @@
-# Crawler Project Context
+# Skitter Project Context
 
 ## Overview
 Web automation platform at `/opt/crawler/` on a Proxmox LXC container. Three capabilities:

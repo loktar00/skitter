@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 API_KEY = os.environ.get("CRAWLER_API_KEY", "")
 
 app = FastAPI(
-    title="Crawler API",
+    title="Skitter API",
     description="HTTP API for sending tasks to an AI agent",
     version="1.0.0",
 )

@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Crawler Setup Script
+# Skitter Setup Script
 #
 # Run this directly on your container to install everything from scratch.
 # Safe to re-run — it will pull the latest code and restart services.
@@ -25,7 +25,7 @@ CONTAINER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 
 echo ""
 echo "============================================"
-echo "  Crawler Setup"
+echo "  Skitter Setup"
 echo "============================================"
 echo ""
 echo "  Install dir:  $CRAWLER_DIR"
