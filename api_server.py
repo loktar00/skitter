@@ -77,6 +77,28 @@ RECIPES_DIR = Path(os.environ.get("CRAWLER_RECIPES_DIR", os.path.join(WORKING_DI
 VENV_PYTHON = os.environ.get("CRAWLER_VENV_PYTHON", sys.executable)
 XDISPLAY = os.environ.get("DISPLAY", ":99")
 
+# --- Display Manager (multi-VNC) ---
+
+from display_manager import DisplayManager
+
+display_manager = DisplayManager()
+
+
+def _display_env(display: str = None) -> dict:
+    """Build env dict with the given DISPLAY (or default)."""
+    return {**os.environ, "DISPLAY": display or XDISPLAY}
+
+
+@app.on_event("startup")
+async def _startup_display_manager():
+    await display_manager.register_default()
+    display_manager.start_cleanup_task()
+
+
+@app.on_event("shutdown")
+async def _shutdown_display_manager():
+    await display_manager.shutdown_all()
+
 
 def _agent_available() -> bool:
     """Check if the agent CLI binary is installed and reachable."""
@@ -109,6 +131,7 @@ class TaskRequest(BaseModel):
     allowed_tools: Optional[list[str]] = None
     timeout: int = Field(default=120, le=MAX_TIMEOUT)
     system_prompt: Optional[str] = None
+    isolated_display: bool = False  # allocate a dedicated VNC display
 
 
 class TaskResponse(BaseModel):
@@ -182,6 +205,7 @@ async def run_agent(
     session_id: Optional[str] = None,
     resume: bool = False,
     system_prompt: Optional[str] = None,
+    display: Optional[str] = None,
 ) -> tuple[str, str]:
     """
     Run agent CLI and return (output_text, session_id).
@@ -206,7 +230,7 @@ async def run_agent(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": XDISPLAY},
+        env=_display_env(display),
     )
 
     try:
@@ -256,33 +280,53 @@ async def health():
 async def run_task(req: TaskRequest):
     """Send a task prompt to the agent and get the response."""
     _require_agent()
-    start = asyncio.get_event_loop().time()
-    result, session_id = await run_agent(
-        prompt=req.prompt,
-        timeout=req.timeout,
-        allowed_tools=req.allowed_tools,
-        system_prompt=req.system_prompt,
-    )
-    duration = asyncio.get_event_loop().time() - start
 
-    sessions[session_id] = {
-        "session_id": session_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "last_prompt": req.prompt,
-        "turns": 1,
-        "status": "completed",
-        "finished_at": datetime.now(timezone.utc).isoformat(),
-        "duration_seconds": round(duration, 2),
-        "task_type": "agent",
-        "log_lines": [],
-    }
+    disp_session = None
+    display = None
+    if req.isolated_display:
+        try:
+            disp_session = await display_manager.allocate()
+            display = disp_session.display
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
 
-    return TaskResponse(
-        status="ok",
-        result=result,
-        session_id=session_id,
-        duration_seconds=round(duration, 2),
-    )
+    try:
+        start = asyncio.get_event_loop().time()
+        result, session_id = await run_agent(
+            prompt=req.prompt,
+            timeout=req.timeout,
+            allowed_tools=req.allowed_tools,
+            system_prompt=req.system_prompt,
+            display=display,
+        )
+        duration = asyncio.get_event_loop().time() - start
+
+        sess_data = {
+            "session_id": session_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "last_prompt": req.prompt,
+            "turns": 1,
+            "status": "completed",
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "duration_seconds": round(duration, 2),
+            "task_type": "agent",
+            "log_lines": [],
+        }
+        if disp_session:
+            sess_data["display"] = disp_session.display
+            sess_data["display_num"] = disp_session.display_num
+            sess_data["ws_port"] = disp_session.ws_port
+        sessions[session_id] = sess_data
+
+        return TaskResponse(
+            status="ok",
+            result=result,
+            session_id=session_id,
+            duration_seconds=round(duration, 2),
+        )
+    finally:
+        if disp_session:
+            await display_manager.deallocate(disp_session.display_num)
 
 
 MCP_PROFILE_DIR = Path(DATA_DIR) / "browser_session" / "mcp_profile"
@@ -293,8 +337,17 @@ async def run_task_stream(req: TaskRequest):
     """Send a task prompt to the agent and stream the response as SSE."""
     _require_agent()
 
+    disp_session = None
+    display = None
+    if req.isolated_display:
+        try:
+            disp_session = await display_manager.allocate()
+            display = disp_session.display
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+
     session_id = str(uuid.uuid4())[:8]
-    sessions[session_id] = {
+    sess_data = {
         "session_id": session_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "last_prompt": req.prompt,
@@ -305,47 +358,57 @@ async def run_task_stream(req: TaskRequest):
         "task_type": "agent_stream",
         "log_lines": [],
     }
+    if disp_session:
+        sess_data["display"] = disp_session.display
+        sess_data["display_num"] = disp_session.display_num
+        sess_data["ws_port"] = disp_session.ws_port
+        disp_session.task_id = session_id
+    sessions[session_id] = sess_data
     start_time = asyncio.get_event_loop().time()
 
     async def event_generator():
-        tools = req.allowed_tools or DEFAULT_ALLOWED_TOOLS.split(",")
-        cmd = [AGENT_BIN, "-p", req.prompt, "--output-format", "stream-json", "--verbose"]
-        for tool in tools:
-            cmd.extend(["--allowedTools", tool.strip()])
-        if req.system_prompt:
-            cmd.extend(["--append-system-prompt", req.system_prompt])
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=WORKING_DIR,
-            env={**os.environ, "DISPLAY": XDISPLAY},
-            limit=10 * 1024 * 1024,  # 10MB line buffer for large payloads (screenshots)
-        )
-
         try:
-            async for line in proc.stdout:
-                text = line.decode("utf-8", errors="replace").strip()
-                if text:
-                    sessions[session_id]["log_lines"].append(text)
-                    yield f"data: {text}\n\n"
-        except asyncio.CancelledError:
-            proc.kill()
-            raise
-        finally:
-            stderr_bytes = await proc.stderr.read()
-            await proc.wait()
-            duration = asyncio.get_event_loop().time() - start_time
-            sessions[session_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
-            sessions[session_id]["duration_seconds"] = round(duration, 2)
-            sessions[session_id]["status"] = "completed" if proc.returncode == 0 else "failed"
-            if proc.returncode != 0 and stderr_bytes:
-                err_msg = stderr_bytes.decode("utf-8", errors="replace").strip()
-                import json as _json
-                yield f"data: {_json.dumps({'type': 'error', 'error': err_msg})}\n\n"
+            tools = req.allowed_tools or DEFAULT_ALLOWED_TOOLS.split(",")
+            cmd = [AGENT_BIN, "-p", req.prompt, "--output-format", "stream-json", "--verbose"]
+            for tool in tools:
+                cmd.extend(["--allowedTools", tool.strip()])
+            if req.system_prompt:
+                cmd.extend(["--append-system-prompt", req.system_prompt])
 
-        yield "data: [DONE]\n\n"
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=WORKING_DIR,
+                env=_display_env(display),
+                limit=10 * 1024 * 1024,  # 10MB line buffer for large payloads (screenshots)
+            )
+
+            try:
+                async for line in proc.stdout:
+                    text = line.decode("utf-8", errors="replace").strip()
+                    if text:
+                        sessions[session_id]["log_lines"].append(text)
+                        yield f"data: {text}\n\n"
+            except asyncio.CancelledError:
+                proc.kill()
+                raise
+            finally:
+                stderr_bytes = await proc.stderr.read()
+                await proc.wait()
+                duration = asyncio.get_event_loop().time() - start_time
+                sessions[session_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+                sessions[session_id]["duration_seconds"] = round(duration, 2)
+                sessions[session_id]["status"] = "completed" if proc.returncode == 0 else "failed"
+                if proc.returncode != 0 and stderr_bytes:
+                    err_msg = stderr_bytes.decode("utf-8", errors="replace").strip()
+                    import json as _json
+                    yield f"data: {_json.dumps({'type': 'error', 'error': err_msg})}\n\n"
+
+            yield "data: [DONE]\n\n"
+        finally:
+            if disp_session:
+                await display_manager.deallocate(disp_session.display_num)
 
     return StreamingResponse(
         event_generator(),
@@ -418,7 +481,7 @@ with sync_playwright() as p:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": XDISPLAY},
+        env=_display_env(),
     )
 
     # Wait for the page to load (up to 30s)
@@ -442,6 +505,38 @@ with sync_playwright() as p:
         message=f"Page opened at {req.url}. Connect via VNC to authenticate.",
         pid=proc.pid,
     )
+
+
+# --- Display Management Endpoints ---
+
+
+@app.get("/api/displays")
+async def list_displays():
+    """List all active display sessions with their VNC websocket ports."""
+    return display_manager.list_sessions()
+
+
+@app.post("/api/displays/allocate")
+async def allocate_display(req: dict = None):
+    """Manually allocate a new display session."""
+    req = req or {}
+    try:
+        session = await display_manager.allocate(task_id=req.get("task_id"))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return session.to_dict()
+
+
+@app.delete("/api/displays/{display_num}")
+async def deallocate_display(display_num: int):
+    """Manually deallocate a display session."""
+    session = display_manager.get_session(display_num)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Display session not found")
+    if session.is_default:
+        raise HTTPException(status_code=400, detail="Cannot deallocate the default display")
+    await display_manager.deallocate(display_num)
+    return {"status": "deallocated", "display_num": display_num}
 
 
 # --- Login Session Management ---
@@ -551,7 +646,7 @@ with sync_playwright() as p:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": XDISPLAY},
+        env=_display_env(),
     )
 
     # Wait for the page to load
@@ -891,7 +986,7 @@ async def browser_open():
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": XDISPLAY},
+        env=_display_env(),
     )
 
     try:
@@ -1250,35 +1345,50 @@ async def delete_recipe(path: str):
 # --- Crawl Task Management ---
 
 
-async def _run_crawl(task_id: str, recipe_path: str, headless: bool):
+async def _run_crawl(task_id: str, recipe_path: str, headless: bool, display: str = None):
     """Background coroutine: runs crawler.py and captures output."""
-    cmd = [
-        VENV_PYTHON, "crawler.py",
-        "--mode", "list",
-        "--recipe", recipe_path,
-    ]
-    if headless:
-        cmd.append("--headless")
+    disp_session = None
+    if not headless and not display:
+        try:
+            disp_session = await display_manager.allocate(task_id=task_id)
+            display = disp_session.display
+            crawl_tasks[task_id]["display"] = disp_session.display
+            crawl_tasks[task_id]["display_num"] = disp_session.display_num
+            crawl_tasks[task_id]["ws_port"] = disp_session.ws_port
+        except RuntimeError:
+            pass  # Fall back to default display
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": XDISPLAY},
-    )
+    try:
+        cmd = [
+            VENV_PYTHON, "crawler.py",
+            "--mode", "list",
+            "--recipe", recipe_path,
+        ]
+        if headless:
+            cmd.append("--headless")
 
-    crawl_tasks[task_id]["pid"] = proc.pid
-    lines = crawl_tasks[task_id]["log_lines"]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=WORKING_DIR,
+            env=_display_env(display),
+        )
 
-    async for line in proc.stdout:
-        text = line.decode("utf-8", errors="replace").rstrip()
-        lines.append(text)
+        crawl_tasks[task_id]["pid"] = proc.pid
+        lines = crawl_tasks[task_id]["log_lines"]
 
-    await proc.wait()
-    crawl_tasks[task_id]["returncode"] = proc.returncode
-    crawl_tasks[task_id]["status"] = "completed" if proc.returncode == 0 else "failed"
-    crawl_tasks[task_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+        async for line in proc.stdout:
+            text = line.decode("utf-8", errors="replace").rstrip()
+            lines.append(text)
+
+        await proc.wait()
+        crawl_tasks[task_id]["returncode"] = proc.returncode
+        crawl_tasks[task_id]["status"] = "completed" if proc.returncode == 0 else "failed"
+        crawl_tasks[task_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+    finally:
+        if disp_session:
+            await display_manager.deallocate(disp_session.display_num)
 
 
 async def _run_full_crawl(
@@ -1289,36 +1399,51 @@ async def _run_full_crawl(
     headless: bool,
 ):
     """Background coroutine: runs crawler.py --mode crawl."""
-    cmd = [
-        VENV_PYTHON, "crawler.py",
-        "--mode", "crawl",
-        "--urls", *urls,
-        "--max-depth", str(max_depth),
-    ]
-    if allowed_domains:
-        cmd.extend(["--domains", *allowed_domains])
-    if headless:
-        cmd.append("--headless")
+    disp_session = None
+    if not headless:
+        try:
+            disp_session = await display_manager.allocate(task_id=task_id)
+            crawl_tasks[task_id]["display"] = disp_session.display
+            crawl_tasks[task_id]["display_num"] = disp_session.display_num
+            crawl_tasks[task_id]["ws_port"] = disp_session.ws_port
+        except RuntimeError:
+            pass
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        cwd=WORKING_DIR,
-        env={**os.environ, "DISPLAY": XDISPLAY},
-    )
+    try:
+        cmd = [
+            VENV_PYTHON, "crawler.py",
+            "--mode", "crawl",
+            "--urls", *urls,
+            "--max-depth", str(max_depth),
+        ]
+        if allowed_domains:
+            cmd.extend(["--domains", *allowed_domains])
+        if headless:
+            cmd.append("--headless")
 
-    crawl_tasks[task_id]["pid"] = proc.pid
-    lines = crawl_tasks[task_id]["log_lines"]
+        display = disp_session.display if disp_session else None
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=WORKING_DIR,
+            env=_display_env(display),
+        )
 
-    async for line in proc.stdout:
-        text = line.decode("utf-8", errors="replace").rstrip()
-        lines.append(text)
+        crawl_tasks[task_id]["pid"] = proc.pid
+        lines = crawl_tasks[task_id]["log_lines"]
 
-    await proc.wait()
-    crawl_tasks[task_id]["returncode"] = proc.returncode
-    crawl_tasks[task_id]["status"] = "completed" if proc.returncode == 0 else "failed"
-    crawl_tasks[task_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+        async for line in proc.stdout:
+            text = line.decode("utf-8", errors="replace").rstrip()
+            lines.append(text)
+
+        await proc.wait()
+        crawl_tasks[task_id]["returncode"] = proc.returncode
+        crawl_tasks[task_id]["status"] = "completed" if proc.returncode == 0 else "failed"
+        crawl_tasks[task_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+    finally:
+        if disp_session:
+            await display_manager.deallocate(disp_session.display_num)
 
 
 @app.post("/api/crawl/full")
@@ -1553,56 +1678,69 @@ async def record_workflow(req: WorkflowRecordRequest):
     _require_agent()
     from workflow_recorder import stream_to_steps
 
+    # Allocate a dedicated display for recording
+    disp_session = None
+    display = None
+    try:
+        disp_session = await display_manager.allocate()
+        display = disp_session.display
+    except RuntimeError:
+        pass  # Fall back to default
+
     async def event_generator():
-        cmd = [
-            AGENT_BIN, "-p", req.prompt,
-            "--output-format", "stream-json",
-            "--verbose",
-            "--append-system-prompt", RECORDING_SYSTEM_PROMPT,
-        ]
-        for tool in RECORDING_TOOLS:
-            cmd.extend(["--allowedTools", tool])
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=WORKING_DIR,
-            env={**os.environ, "DISPLAY": XDISPLAY},
-        )
-
-        raw_lines: list[str] = []
-
         try:
-            async for line in proc.stdout:
-                text = line.decode("utf-8", errors="replace").strip()
-                if text:
-                    raw_lines.append(text)
-                    # Forward to client for live viewing
-                    yield f"data: {text}\n\n"
-        except asyncio.CancelledError:
-            proc.kill()
-            raise
-        finally:
+            cmd = [
+                AGENT_BIN, "-p", req.prompt,
+                "--output-format", "stream-json",
+                "--verbose",
+                "--append-system-prompt", RECORDING_SYSTEM_PROMPT,
+            ]
+            for tool in RECORDING_TOOLS:
+                cmd.extend(["--allowedTools", tool])
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=WORKING_DIR,
+                env=_display_env(display),
+            )
+
+            raw_lines: list[str] = []
+
             try:
-                await asyncio.wait_for(proc.wait(), timeout=10)
-            except asyncio.TimeoutError:
+                async for line in proc.stdout:
+                    text = line.decode("utf-8", errors="replace").strip()
+                    if text:
+                        raw_lines.append(text)
+                        # Forward to client for live viewing
+                        yield f"data: {text}\n\n"
+            except asyncio.CancelledError:
                 proc.kill()
-                await proc.wait()
+                raise
+            finally:
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=10)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
 
-        # Parse raw stream into workflow steps
-        steps = stream_to_steps(raw_lines)
-        steps_json = [s.model_dump() for s in steps]
+            # Parse raw stream into workflow steps
+            steps = stream_to_steps(raw_lines)
+            steps_json = [s.model_dump() for s in steps]
 
-        result = {
-            "type": "workflow_result",
-            "name": req.name or "",
-            "description": req.description or "",
-            "recorded_from": req.prompt,
-            "steps": steps_json,
-        }
-        yield f"data: {json.dumps(result)}\n\n"
-        yield "data: [DONE]\n\n"
+            result = {
+                "type": "workflow_result",
+                "name": req.name or "",
+                "description": req.description or "",
+                "recorded_from": req.prompt,
+                "steps": steps_json,
+            }
+            yield f"data: {json.dumps(result)}\n\n"
+            yield "data: [DONE]\n\n"
+        finally:
+            if disp_session:
+                await display_manager.deallocate(disp_session.display_num)
 
     return StreamingResponse(
         event_generator(),
@@ -1664,6 +1802,16 @@ async def run_workflow(name: str, req: WorkflowRunRequest):
 # --- Unified Task Monitoring ---
 
 
+def _display_fields(d: dict) -> dict:
+    """Extract display/VNC fields from a task dict if present."""
+    fields = {}
+    if d.get("display"):
+        fields["display"] = d["display"]
+        fields["display_num"] = d.get("display_num")
+        fields["ws_port"] = d.get("ws_port")
+    return fields
+
+
 @app.get("/api/tasks")
 async def list_all_tasks():
     """Unified task list: crawls + workflow runs + agent sessions."""
@@ -1679,6 +1827,7 @@ async def list_all_tasks():
             "started_at": t["started_at"],
             "finished_at": t.get("finished_at"),
             "log_count": len(t.get("log_lines", [])),
+            **_display_fields(t),
         })
 
     for r in workflow_runs.values():
@@ -1691,6 +1840,7 @@ async def list_all_tasks():
             "started_at": r["started_at"],
             "finished_at": r.get("finished_at"),
             "log_count": len(r.get("log_lines", [])),
+            **_display_fields(r),
         })
 
     for s in sessions.values():
@@ -1703,6 +1853,7 @@ async def list_all_tasks():
             "started_at": s["created_at"],
             "finished_at": s.get("finished_at"),
             "log_count": len(s.get("log_lines", [])),
+            **_display_fields(s),
         })
 
     tasks.sort(key=lambda t: t["started_at"] or "", reverse=True)
@@ -1724,6 +1875,7 @@ async def get_task_detail(task_id: str, tail: int = 200):
             "finished_at": t.get("finished_at"),
             "log_count": len(t.get("log_lines", [])),
             "log_tail": t.get("log_lines", [])[-tail:],
+            **_display_fields(t),
         }
 
     if task_id in workflow_runs:
@@ -1738,6 +1890,7 @@ async def get_task_detail(task_id: str, tail: int = 200):
             "finished_at": r.get("finished_at"),
             "log_count": len(r.get("log_lines", [])),
             "log_tail": r.get("log_lines", [])[-tail:],
+            **_display_fields(r),
         }
 
     if task_id in sessions:
@@ -1752,6 +1905,7 @@ async def get_task_detail(task_id: str, tail: int = 200):
             "finished_at": s.get("finished_at"),
             "log_count": len(s.get("log_lines", [])),
             "log_tail": s.get("log_lines", [])[-tail:],
+            **_display_fields(s),
         }
 
     raise HTTPException(status_code=404, detail="Task not found")

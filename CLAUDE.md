@@ -11,7 +11,8 @@ Uses Playwright 1.58+ and curl-cffi for scraping with CloudFlare bypass. YAML re
 ## Environment
 - **Python**: 3.11 (venv at `/opt/crawler/venv/`)
 - **Node.js**: 22 LTS (for Playwright MCP server, if using agent workflow recording)
-- **Display**: Xvfb on `:99` (for headless browser automation, VNC for auth)
+- **Display**: Xvfb on `:99` (default, for headless browser automation, VNC for auth)
+- **Multi-VNC**: Up to 8 concurrent displays (`:99`-`:106`), each with isolated Xvfb + x11vnc + websockify
 - **Activate venv**: `source /opt/crawler/venv/bin/activate`
 
 ## Key Files
@@ -25,6 +26,7 @@ Uses Playwright 1.58+ and curl-cffi for scraping with CloudFlare bypass. YAML re
 | `validate_recipe.py` | CLI tool to validate recipe YAML |
 | `browser_helper.py` | CLI for browser actions: navigate, click, type, screenshot, etc. |
 | `api_server.py` | FastAPI HTTP API — dashboard, crawl control, workflow management |
+| `display_manager.py` | Multi-VNC display manager — allocates/deallocates Xvfb+x11vnc+websockify stacks |
 | `data_server.py` | HTTP file server for output data |
 | `workflow_models.py` | Pydantic models: Workflow, WorkflowStep, WorkflowInputField |
 | `workflow_recorder.py` | Parses agent CLI stream-json output → replayable workflow steps |
@@ -120,6 +122,36 @@ Service: `systemctl start crawler-data`
 ## n8n Integration
 - SSH scripts in repo root for scheduled recipe execution
 - HTTP API: `POST http://<crawler-ip>:8080/task` with JSON body from n8n HTTP Request node
+
+## Multi-VNC Display System
+
+Multiple agents/tasks can run simultaneously, each on an isolated display with its own VNC session.
+
+**Port scheme**: Display `:N` → VNC port `5900+N`, WebSocket port `6080+(N-99)`
+
+| Display | VNC Port | WS Port | Notes |
+|---------|----------|---------|-------|
+| `:99`   | 5999     | 6080    | Default (systemd-managed) |
+| `:100`  | 6000     | 6081    | Auto-allocated |
+| `:101`  | 6001     | 6082    | Auto-allocated |
+
+**API Endpoints**:
+```bash
+# List active displays
+curl http://localhost:8080/api/displays
+
+# Allocate a new display
+curl -X POST http://localhost:8080/api/displays/allocate
+
+# Deallocate a display
+curl -X DELETE http://localhost:8080/api/displays/101
+```
+
+**Automatic allocation**: Non-headless crawls, agent tasks with `isolated_display: true`, and workflow recordings automatically allocate a dedicated display. The display is freed when the task completes.
+
+**Dashboard**: Browser View section has a display selector dropdown. Running tasks with displays show a "VNC" button to watch them in real-time.
+
+**Config**: `MAX_DISPLAY_SESSIONS=8` (env var, default 8). Display `:99` always exists as the default.
 
 ## Cookie/Session Management
 - Cookies saved at `output/browser_session/cookies.json`

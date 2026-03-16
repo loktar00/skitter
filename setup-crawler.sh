@@ -54,7 +54,7 @@ echo "[1/9] Installing system packages..."
 apt update -qq
 apt install -y -qq \
     python3.11 python3.11-venv python3-pip git curl \
-    xvfb x11vnc fluxbox \
+    xvfb x11vnc fluxbox novnc websockify \
     libgtk-3-0 libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 \
     libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
     libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
@@ -116,6 +116,38 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+# x11vnc service for default display
+cat > /etc/systemd/system/x11vnc.service << EOF
+[Unit]
+Description=X11VNC Server for display :${DISPLAY_NUM}
+After=xvfb.service
+Requires=xvfb.service
+
+[Service]
+ExecStart=/usr/bin/x11vnc -display :${DISPLAY_NUM} -rfbport $((5900 + DISPLAY_NUM)) -nopw -forever -shared -xkb
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# websockify service for default display (noVNC bridge)
+cat > /etc/systemd/system/websockify.service << EOF
+[Unit]
+Description=WebSockify noVNC bridge for display :${DISPLAY_NUM}
+After=x11vnc.service
+Requires=x11vnc.service
+
+[Service]
+ExecStart=/usr/bin/websockify --web /usr/share/novnc 6080 localhost:$((5900 + DISPLAY_NUM))
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # 8. Crawler API service
 echo "[8/9] Configuring crawler-api service..."
 cat > /etc/systemd/system/crawler-api.service << EOF
@@ -133,6 +165,7 @@ Environment=CRAWLER_DATA_DIR=${CRAWLER_DIR}/output
 Environment=CRAWLER_VENV_PYTHON=${CRAWLER_DIR}/venv/bin/python
 Environment=CRAWLER_API_PORT=${API_PORT}
 Environment=CRAWLER_API_KEY=${CRAWLER_API_KEY}
+Environment=MAX_DISPLAY_SESSIONS=8
 ExecStart=${CRAWLER_DIR}/venv/bin/python -m uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT}
 Restart=always
 RestartSec=10
@@ -169,9 +202,11 @@ echo "export DISPLAY=:${DISPLAY_NUM}" > /etc/profile.d/display.sh
 echo ""
 echo "Starting services..."
 systemctl daemon-reload
-systemctl enable xvfb crawler-api crawler-data --quiet
+systemctl enable xvfb x11vnc websockify crawler-api crawler-data --quiet
 systemctl start xvfb
 sleep 1
+systemctl start x11vnc
+systemctl start websockify
 systemctl start crawler-api
 systemctl start crawler-data
 sleep 2
@@ -184,7 +219,7 @@ echo "============================================"
 echo ""
 
 # Check each service
-for svc in xvfb crawler-api crawler-data; do
+for svc in xvfb x11vnc websockify crawler-api crawler-data; do
     if systemctl is-active --quiet "$svc"; then
         echo "  [OK]  $svc"
     else

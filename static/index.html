@@ -677,6 +677,10 @@
           <div class="card-label">Failed</div>
           <div class="card-value" id="dash-failed">0</div>
         </div>
+        <div class="card card-accent-yellow">
+          <div class="card-label">Displays</div>
+          <div class="card-value" id="dash-displays">1</div>
+        </div>
       </div>
 
       <div class="section-header">
@@ -1060,7 +1064,12 @@
     <div class="section" id="section-browser">
       <div class="section-header">
         <h2>Browser View (VNC)</h2>
-        <button class="btn btn-sm btn-primary" onclick="reconnectVNC()">Reconnect</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="vnc-display-select" onchange="switchVncDisplay(this.value)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:4px 8px;font-size:13px;">
+            <option value="6080">Default (:99)</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="reconnectVNC()">Reconnect</button>
+        </div>
       </div>
       <iframe id="vnc-iframe-full" class="vnc-frame-full" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
     </div>
@@ -1071,8 +1080,11 @@
 <!-- BROWSER PANEL -->
 <div class="browser-panel" id="browser-panel">
   <div class="browser-panel-header" id="browser-panel-drag">
-    <h3>Live Browser (VNC)</h3>
+    <h3>Live Browser <span id="panel-vnc-label" style="font-size:12px;color:var(--text2);font-weight:normal;">(:99)</span></h3>
     <div style="display:flex; gap:8px; align-items:center;">
+      <select id="vnc-panel-select" onchange="switchVncDisplay(this.value)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:2px 6px;font-size:12px;">
+        <option value="6080">:99</option>
+      </select>
       <button class="btn btn-sm btn-ghost" onclick="reconnectVNC()">Reconnect</button>
       <button class="btn btn-sm btn-ghost" onclick="toggleBrowserPanel()">Close</button>
     </div>
@@ -1158,8 +1170,14 @@
 <script>
 // === CONFIG & STATE ===
 const API = window.location.origin;
-const VNC_PORT = 6080;
-const VNC_BASE = `${window.location.protocol}//${window.location.hostname}:${VNC_PORT}`;
+const DEFAULT_VNC_PORT = 6080;
+let activeVncPort = DEFAULT_VNC_PORT;
+let activeDisplays = [];
+
+function vncUrl(port) {
+  const base = `${window.location.protocol}//${window.location.hostname}:${port}`;
+  return `${base}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
+}
 
 let vncLoaded = false;
 let allTasks = [];
@@ -1269,6 +1287,61 @@ document.querySelectorAll('.sub-nav').forEach(nav => {
 });
 
 // === UNIFIED TASK MONITORING ===
+async function pollDisplays() {
+  try {
+    activeDisplays = await api('/api/displays');
+    updateDisplaySelectors();
+  } catch { /* ignore */ }
+}
+
+function updateDisplaySelectors() {
+  const selects = [document.getElementById('vnc-display-select'), document.getElementById('vnc-panel-select')];
+  selects.forEach(select => {
+    if (!select) return;
+    const prev = select.value;
+    select.innerHTML = activeDisplays.map(d => {
+      const label = d.is_default ? `Default (:${d.display_num})` : `:${d.display_num}${d.task_id ? ' - ' + d.task_id : ''}`;
+      const shortLabel = select.id === 'vnc-panel-select' ? `:${d.display_num}` : label;
+      return `<option value="${d.ws_port}">${select.id === 'vnc-panel-select' ? shortLabel : label}</option>`;
+    }).join('');
+    if (prev && [...select.options].some(o => o.value === prev)) select.value = prev;
+  });
+  const dashEl = document.getElementById('dash-displays');
+  if (dashEl) dashEl.textContent = activeDisplays.length;
+}
+
+function switchVncDisplay(wsPort) {
+  activeVncPort = parseInt(wsPort);
+  const url = vncUrl(activeVncPort);
+  // Update whichever iframe is visible
+  const fullIframe = document.getElementById('vnc-iframe-full');
+  const panelIframe = document.getElementById('vnc-iframe');
+  const fullSection = document.getElementById('section-browser');
+  if (fullSection && fullSection.style.display !== 'none' && fullSection.classList.contains('active-section')) {
+    fullIframe.src = url;
+    vncFullLoaded = true;
+  }
+  const panel = document.getElementById('browser-panel');
+  if (panel && panel.classList.contains('open')) {
+    panelIframe.src = url;
+    vncLoaded = true;
+  }
+  // Sync both selects
+  [document.getElementById('vnc-display-select'), document.getElementById('vnc-panel-select')].forEach(s => {
+    if (s) s.value = String(activeVncPort);
+  });
+  // Update panel label
+  const label = document.getElementById('panel-vnc-label');
+  const disp = activeDisplays.find(d => d.ws_port === activeVncPort);
+  if (label && disp) label.textContent = `(:${disp.display_num})`;
+}
+
+function watchTaskVnc(wsPort, displayNum) {
+  switchVncDisplay(wsPort);
+  const panel = document.getElementById('browser-panel');
+  if (!panel.classList.contains('open')) toggleBrowserPanel();
+}
+
 async function pollAllTasks() {
   try {
     allTasks = await api('/api/tasks');
@@ -1276,6 +1349,9 @@ async function pollAllTasks() {
     updateDashCards();
     renderTasks();
   } catch { /* ignore */ }
+
+  // Also poll displays
+  await pollDisplays();
 
   // Adaptive polling
   clearInterval(taskPollInterval);
@@ -1314,8 +1390,9 @@ function renderTasks() {
   tbody.innerHTML = sorted.map(t => {
     const isRunning = t.status === 'running';
     const rowClass = isRunning ? 'pulse' : '';
+    const vncBtn = (isRunning && t.ws_port) ? `<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); watchTaskVnc(${t.ws_port}, ${t.display_num})" title="Watch :${t.display_num}" style="padding:2px 6px;font-size:11px;">VNC</button>` : '';
     return `<tr class="${rowClass}" style="cursor:pointer;" onclick="toggleTaskDetail('${esc(t.id)}')">
-      <td><span class="badge badge-${t.type}">${t.type}</span></td>
+      <td><span class="badge badge-${t.type}">${t.type}</span>${vncBtn}</td>
       <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(t.label)}">${esc(t.label)}</td>
       <td><span class="badge badge-${t.status}">${t.status}</span></td>
       <td style="font-size:13px; color:var(--text2);">${fmtTime(t.started_at)}</td>
@@ -1355,13 +1432,15 @@ async function loadTaskDetail(taskId, container) {
           <span class="badge badge-${t.status}">${t.status}</span>
         </div>
         <div style="display:flex; gap:8px;">
-          ${isRunning ? '<button class="btn btn-sm btn-ghost" onclick="toggleBrowserPanel()">Full VNC</button>' : ''}
+          ${isRunning && t.ws_port ? `<button class="btn btn-sm btn-ghost" onclick="watchTaskVnc(${t.ws_port}, ${t.display_num})">Watch :${t.display_num}</button>` : ''}
+          ${isRunning ? '<button class="btn btn-sm btn-ghost" onclick="toggleBrowserPanel()">VNC Panel</button>' : ''}
           <button class="btn btn-sm btn-ghost" onclick="expandedTaskId=null; renderTasks();">Close</button>
         </div>
       </div>
       <div class="task-detail-meta">
         <dl><dt>Task ID</dt><dd><code>${esc(t.id)}</code></dd></dl>
         <dl><dt>Type</dt><dd>${t.type}${t.subtype ? ' / ' + t.subtype : ''}</dd></dl>
+        ${t.display ? `<dl><dt>Display</dt><dd>${t.display} (ws:${t.ws_port})</dd></dl>` : ''}
         <dl><dt>Started</dt><dd>${fmtTime(t.started_at)}</dd></dl>
         <dl><dt>Duration</dt><dd>${fmtDuration(t.started_at, t.finished_at)}</dd></dl>
         <dl><dt>Log Lines</dt><dd>${t.log_count}</dd></dl>
@@ -2299,27 +2378,27 @@ function closePreview() {
 
 // === BROWSER PANEL & BROWSER VIEW ===
 let vncFullLoaded = false;
-const VNC_URL = `${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
 
 function toggleBrowserPanel() {
   const panel = document.getElementById('browser-panel');
   panel.classList.toggle('open');
 
   if (panel.classList.contains('open') && !vncLoaded) {
-    document.getElementById('vnc-iframe').src = VNC_URL;
+    document.getElementById('vnc-iframe').src = vncUrl(activeVncPort);
     vncLoaded = true;
   }
 }
 
 function loadBrowserView() {
   if (!vncFullLoaded) {
-    document.getElementById('vnc-iframe-full').src = VNC_URL;
+    document.getElementById('vnc-iframe-full').src = vncUrl(activeVncPort);
     vncFullLoaded = true;
   }
 }
 
 function reconnectVNC() {
   // Reconnect whichever VNC iframe is currently visible
+  const url = vncUrl(activeVncPort);
   const panelIframe = document.getElementById('vnc-iframe');
   const fullIframe = document.getElementById('vnc-iframe-full');
   const activeSection = document.getElementById('section-browser');
@@ -2327,10 +2406,10 @@ function reconnectVNC() {
 
   if (isFullView && fullIframe) {
     fullIframe.src = '';
-    setTimeout(() => { fullIframe.src = VNC_URL; }, 200);
+    setTimeout(() => { fullIframe.src = url; }, 200);
   } else if (panelIframe) {
     panelIframe.src = '';
-    setTimeout(() => { panelIframe.src = VNC_URL; }, 200);
+    setTimeout(() => { panelIframe.src = url; }, 200);
   }
 }
 

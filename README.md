@@ -15,7 +15,7 @@ Run on a fresh Debian/Ubuntu container (or any server):
 curl -sL https://raw.githubusercontent.com/loktar00/crawler/main/setup-crawler.sh | bash
 ```
 
-This installs everything, sets up systemd services (`xvfb`, `crawler-api`, `crawler-data`), and prints your dashboard URL.
+This installs everything, sets up systemd services (`xvfb`, `x11vnc`, `websockify`, `crawler-api`, `crawler-data`), and prints your dashboard URL.
 
 ### 2. Connect an Agent
 
@@ -160,6 +160,23 @@ The `skills/` directory contains instruction prompts that teach agents how to us
 | [recipe-builder](skills/recipe-builder.md) | **Auto-create recipes**: inspect a page's DOM, discover CSS selectors, build and test a scraping recipe. |
 | [site-login](skills/site-login.md) | **Login flow**: open a site, guide the user through VNC login, save cookies for future use. |
 
+## Multi-VNC: Concurrent Agent Monitoring
+
+Multiple agents can run simultaneously, each on an isolated display with real-time VNC monitoring from the dashboard.
+
+- Non-headless crawls, agent tasks, and workflow recordings each get a dedicated Xvfb + x11vnc + websockify stack
+- Dashboard shows a display selector to switch between active sessions
+- Running tasks show a "VNC" button to watch them live
+- Displays are automatically allocated and freed as tasks start/complete
+- Up to 8 concurrent displays (configurable via `MAX_DISPLAY_SESSIONS`)
+
+| Display | VNC Port | WebSocket Port | Notes |
+|---------|----------|----------------|-------|
+| `:99`   | 5999     | 6080           | Default (systemd-managed) |
+| `:100`  | 6000     | 6081           | Auto-allocated per task |
+| `:101`  | 6001     | 6082           | Auto-allocated per task |
+| ...     | ...      | ...            | Up to `:106` / 6087 |
+
 ## Architecture
 
 ```
@@ -174,6 +191,12 @@ The `skills/` directory contains instruction prompts that teach agents how to us
 │  ┌──────────┬───────────┬────────────────────┐  │
 │  │ REST API │ MCP /mcp  │ Dashboard UI       │  │
 │  └──────────┴───────────┴────────────────────┘  │
+│  ┌──────────────────────────────────────────┐   │
+│  │ Display Manager (multi-VNC)              │   │
+│  │ • Allocate/free Xvfb+x11vnc+websockify  │   │
+│  │ • Per-task display isolation             │   │
+│  │ • Zombie cleanup & graceful shutdown     │   │
+│  └──────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────┐   │
 │  │ Browser Session (Playwright + Chromium)  │   │
 │  │ • Anti-detection  • Cookie persistence   │   │
@@ -197,6 +220,7 @@ The `skills/` directory contains instruction prompts that teach agents how to us
 
 ```
 api_server.py         # FastAPI server — REST API, MCP endpoint, browser session
+display_manager.py    # Multi-VNC display manager (Xvfb/x11vnc/websockify lifecycle)
 mcp_server.py         # Standalone MCP bridge (stdio, for Claude Code)
 crawler_cli.py        # CLI tool (shell-based agents, scripting, manual use)
 crawler.py            # Core crawler (general + list modes)
@@ -244,6 +268,8 @@ output:
 | `CRAWLER_DATA_DIR` | `/opt/crawler/output` | Output directory |
 | `CRAWLER_VENV_PYTHON` | `sys.executable` | Python binary path |
 | `AGENT_BIN` | `claude` | Agent CLI (only for `/task` endpoints) |
+| `MAX_DISPLAY_SESSIONS` | `8` | Max concurrent VNC displays |
+| `DISPLAY_NUM` | `99` | Default X11 display number |
 
 ## CLI Reference
 
