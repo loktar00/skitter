@@ -2,8 +2,6 @@
 
 A browser-as-a-service platform for web crawling, scraping, and browser automation. Control it from any AI agent via MCP, CLI, or REST API.
 
-<img width="1654" height="678" alt="image" src="https://github.com/user-attachments/assets/879d8227-caa7-4172-8f7b-0fc9d3bc140c" />
-
 
 ## Quick Start
 
