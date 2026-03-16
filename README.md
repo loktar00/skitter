@@ -1,4 +1,4 @@
-# Skitter
+# 🕷️Skitter
 
 A browser-as-a-service platform for web crawling, scraping, and browser automation. Control it from any AI agent via MCP, CLI, or REST API.
 
