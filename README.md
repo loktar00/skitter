@@ -2,6 +2,7 @@
 
 A browser-as-a-service platform for web crawling, scraping, and browser automation. Control it from any AI agent via MCP, CLI, or REST API.
 
+![alt text](skitter.PNG)
 
 ## Quick Start
 
@@ -159,6 +160,8 @@ The `skills/` directory contains instruction prompts that teach agents how to us
 | [site-login](skills/site-login.md) | **Login flow**: open a site, guide the user through VNC login, save cookies for future use. |
 
 ## Multi-VNC: Concurrent Agent Monitoring
+
+![alt text](image.png)
 
 Multiple agents can run simultaneously, each on an isolated display with real-time VNC monitoring from the dashboard.
 
