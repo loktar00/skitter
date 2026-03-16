@@ -8,13 +8,30 @@ A browser-as-a-service platform for web crawling, scraping, and browser automati
 
 ### 1. Install
 
-Run on a fresh Debian/Ubuntu container (or any server):
+**Option A: Setup script** (Debian/Ubuntu LXC container or bare metal):
 
 ```bash
 curl -sL https://raw.githubusercontent.com/loktar00/crawler/main/setup-crawler.sh | bash
 ```
 
 This installs everything, sets up systemd services (`xvfb`, `x11vnc`, `websockify`, `crawler-api`, `crawler-data`), and prints your dashboard URL.
+
+**Option B: Docker:**
+
+```bash
+git clone https://github.com/loktar00/crawler.git && cd crawler
+docker compose up -d
+```
+
+Or with an API key:
+
+```bash
+CRAWLER_API_KEY=my-secret docker compose up -d
+```
+
+Dashboard at `http://localhost:8080/dashboard/`, VNC at `http://localhost:6080/vnc.html`.
+
+Output and workflows persist via Docker volumes. See [Docker Deployment](#docker-deployment) for details.
 
 ### 2. Connect an Agent
 
@@ -173,7 +190,7 @@ Multiple agents can run simultaneously, each on an isolated display with real-ti
 
 | Display | VNC Port | WebSocket Port | Notes |
 |---------|----------|----------------|-------|
-| `:99`   | 5999     | 6080           | Default (systemd-managed) |
+| `:99`   | 5999     | 6080           | Default (systemd / supervisord) |
 | `:100`  | 6000     | 6081           | Auto-allocated per task |
 | `:101`  | 6001     | 6082           | Auto-allocated per task |
 | ...     | ...      | ...            | Up to `:106` / 6087 |
@@ -217,6 +234,54 @@ Multiple agents can run simultaneously, each on an isolated display with real-ti
 └─────────────────────────────────────────────────┘
 ```
 
+## Docker Deployment
+
+### Build & Run
+
+```bash
+# Clone and start
+git clone https://github.com/loktar00/crawler.git && cd crawler
+docker compose up -d
+
+# With API key
+CRAWLER_API_KEY=my-secret docker compose up -d
+
+# Or without compose
+docker build -t skitter .
+docker run -d --name skitter --shm-size=2g \
+  -p 8080:8080 -p 8081:8081 -p 6080:6080 \
+  skitter
+```
+
+### Ports
+
+| Port | Service |
+|------|---------|
+| 8080 | API + Dashboard |
+| 8081 | Data file server |
+| 6080 | noVNC (browser view) |
+
+### Persistent Data
+
+The compose file creates two named volumes:
+
+- `skitter-output` — crawled data, cookies, browser sessions
+- `skitter-workflows` — saved workflow JSON files
+
+To use host directories instead:
+
+```yaml
+volumes:
+  - ./output:/opt/crawler/output
+  - ./workflows:/opt/crawler/workflows
+```
+
+### Notes
+
+- **`shm_size: 2gb`** is required — Chromium uses `/dev/shm` for shared memory and will crash with Docker's default 64MB.
+- The container uses **supervisord** instead of systemd to manage the display stack and Python servers.
+- Multi-VNC works inside the container but only the default display's websocket port (6080) is exposed. To access additional VNC sessions from outside, add ports `6081-6087` to your compose file.
+
 ## Project Structure
 
 ```
@@ -229,7 +294,10 @@ list_crawler.py       # Recipe-driven list crawl engine
 recipe_loader.py      # YAML recipe parser
 workflow_engine.py    # Replay workflows via Playwright (no AI)
 workflow_recorder.py  # Parse agent actions into workflow steps
-setup-crawler.sh      # One-shot container setup
+setup-crawler.sh      # One-shot LXC/bare-metal setup
+Dockerfile            # Docker image build
+docker-compose.yml    # Docker Compose config
+docker/               # supervisord config, entrypoint
 static/index.html     # Dashboard UI
 skills/               # Agent instruction prompts
 recipes/              # YAML scraping recipes

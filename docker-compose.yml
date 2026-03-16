@@ -1,0 +1,20 @@
+services:
+  skitter:
+    build: .
+    container_name: skitter
+    ports:
+      - "8080:8080"   # API + Dashboard
+      - "8081:8081"   # Data file server
+      - "6080:6080"   # noVNC (browser view)
+    volumes:
+      - skitter-output:/opt/crawler/output
+      - skitter-workflows:/opt/crawler/workflows
+    environment:
+      - CRAWLER_API_KEY=${CRAWLER_API_KEY:-}
+      - MAX_DISPLAY_SESSIONS=8
+    restart: unless-stopped
+    shm_size: "2gb"
+
+volumes:
+  skitter-output:
+  skitter-workflows:
