@@ -790,6 +790,7 @@ async def list_saved_sessions():
 
 browser_session: dict = {"proc": None, "status": "closed"}
 browser_recording: dict = {"active": False, "steps": [], "seq": 0}
+_browser_lock = asyncio.Lock()
 
 
 def _browser_script() -> str:
@@ -1007,34 +1008,39 @@ async def browser_open():
 
 
 async def _browser_cmd(cmd: dict) -> dict:
-    """Send a command to the persistent browser and return the result."""
+    """Send a command to the persistent browser and return the result.
+
+    Uses _browser_lock to serialize access to the subprocess stdin/stdout
+    pipes, preventing concurrent reads that cause asyncio readuntil() errors.
+    """
     proc = browser_session.get("proc")
     if not proc or proc.returncode is not None:
         raise HTTPException(status_code=400, detail="No active browser session. Call /api/browser/open first.")
 
-    try:
-        proc.stdin.write((json.dumps(cmd) + "\n").encode())
-        await proc.stdin.drain()
-        line = await asyncio.wait_for(proc.stdout.readline(), timeout=120)
-        result = json.loads(line.decode("utf-8", errors="replace").strip())
+    async with _browser_lock:
+        try:
+            proc.stdin.write((json.dumps(cmd) + "\n").encode())
+            await proc.stdin.drain()
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=120)
+            result = json.loads(line.decode("utf-8", errors="replace").strip())
 
-        # Record action if recording is active
-        action = cmd.get("action", "")
-        if browser_recording["active"] and action not in ("snapshot", "screenshot", "get_links", "save_cookies"):
-            browser_recording["seq"] += 1
-            step = {
-                "seq": browser_recording["seq"],
-                "action": action,
-                "params": {k: v for k, v in cmd.items() if k != "action"},
-                "description": _describe_step(action, cmd),
-            }
-            browser_recording["steps"].append(step)
+            # Record action if recording is active
+            action = cmd.get("action", "")
+            if browser_recording["active"] and action not in ("snapshot", "screenshot", "get_links", "save_cookies"):
+                browser_recording["seq"] += 1
+                step = {
+                    "seq": browser_recording["seq"],
+                    "action": action,
+                    "params": {k: v for k, v in cmd.items() if k != "action"},
+                    "description": _describe_step(action, cmd),
+                }
+                browser_recording["steps"].append(step)
 
-        return result
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Browser command timed out")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Browser command failed: {e}")
+            return result
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Browser command timed out")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Browser command failed: {e}")
 
 
 def _describe_step(action: str, cmd: dict) -> str:
