@@ -850,6 +850,7 @@ with sync_playwright() as p:
         try:
             cmd = json.loads(line)
             action = cmd.get("action", "")
+            cmd_id = cmd.get("_cmd_id", "")
             result = {{}}
 
             if action == "navigate":
@@ -960,16 +961,22 @@ with sync_playwright() as p:
             elif action == "close":
                 save_cookies()
                 ctx.close()
-                print(json.dumps({{"closed": True}}), flush=True)
+                print(json.dumps({{"closed": True, "_cmd_id": cmd_id}}), flush=True)
                 sys.exit(0)
 
             else:
                 result = {{"error": f"Unknown action: {{action}}"}}
 
+            result["_cmd_id"] = cmd_id
             print(json.dumps(result), flush=True)
 
         except Exception as e:
-            print(json.dumps({{"error": str(e), "traceback": traceback.format_exc()}}), flush=True)
+            err_resp = {{"error": str(e), "traceback": traceback.format_exc()}}
+            try:
+                err_resp["_cmd_id"] = cmd.get("_cmd_id", "")
+            except Exception:
+                pass
+            print(json.dumps(err_resp), flush=True)
 '''
 
 
@@ -1007,40 +1014,107 @@ async def browser_open():
     return {"status": "open", "message": "Browser session started with saved cookies."}
 
 
-async def _browser_cmd(cmd: dict) -> dict:
+async def _browser_cmd(cmd: dict, _retried: bool = False) -> dict:
     """Send a command to the persistent browser and return the result.
 
     Uses _browser_lock to serialize access to the subprocess stdin/stdout
-    pipes, preventing concurrent reads that cause asyncio readuntil() errors.
+    pipes. Uses _cmd_id matching to skip spurious or stale stdout lines.
+    Auto-restarts the browser if it has crashed.
     """
     proc = browser_session.get("proc")
     if not proc or proc.returncode is not None:
-        raise HTTPException(status_code=400, detail="No active browser session. Call /api/browser/open first.")
+        if _retried:
+            raise HTTPException(status_code=500, detail="Browser crashed and auto-restart failed.")
+        browser_session["status"] = "closed"
+        browser_session["proc"] = None
+        await browser_open()
+        return await _browser_cmd(cmd, _retried=True)
+
+    cmd_id = str(uuid.uuid4())[:8]
+    cmd["_cmd_id"] = cmd_id
+    crashed = False
 
     async with _browser_lock:
         try:
             proc.stdin.write((json.dumps(cmd) + "\n").encode())
             await proc.stdin.drain()
-            line = await asyncio.wait_for(proc.stdout.readline(), timeout=120)
-            result = json.loads(line.decode("utf-8", errors="replace").strip())
 
-            # Record action if recording is active
-            action = cmd.get("action", "")
-            if browser_recording["active"] and action not in ("snapshot", "screenshot", "get_links", "save_cookies"):
-                browser_recording["seq"] += 1
-                step = {
-                    "seq": browser_recording["seq"],
-                    "action": action,
-                    "params": {k: v for k, v in cmd.items() if k != "action"},
-                    "description": _describe_step(action, cmd),
-                }
-                browser_recording["steps"].append(step)
+            # Read lines until we find matching _cmd_id
+            deadline = asyncio.get_event_loop().time() + 120
+            while True:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    raise asyncio.TimeoutError()
+                line = await asyncio.wait_for(
+                    proc.stdout.readline(), timeout=remaining
+                )
+                if not line:
+                    # Empty bytes = EOF = process died
+                    crashed = True
+                    break
+                text = line.decode("utf-8", errors="replace").strip()
+                if not text:
+                    continue
+                try:
+                    result = json.loads(text)
+                except json.JSONDecodeError:
+                    continue  # Skip non-JSON output (Chromium noise)
+                if result.get("_cmd_id") != cmd_id:
+                    continue  # Skip stale or unrelated responses
+                # Found matching response
+                result.pop("_cmd_id", None)
 
-            return result
+                # Record action if recording is active
+                action = cmd.get("action", "")
+                if browser_recording["active"] and action not in (
+                    "snapshot", "screenshot", "get_links", "save_cookies"
+                ):
+                    browser_recording["seq"] += 1
+                    step = {
+                        "seq": browser_recording["seq"],
+                        "action": action,
+                        "params": {
+                            k: v for k, v in cmd.items()
+                            if k not in ("action", "_cmd_id")
+                        },
+                        "description": _describe_step(action, cmd),
+                    }
+                    browser_recording["steps"].append(step)
+
+                return result
+
         except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail="Browser command timed out")
+            # Kill subprocess to prevent stale state
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+            browser_session["status"] = "closed"
+            browser_session["proc"] = None
+            raise HTTPException(
+                status_code=504,
+                detail="Browser command timed out; session reset."
+            )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Browser command failed: {e}")
+            if proc.returncode is not None:
+                crashed = True
+            else:
+                raise HTTPException(
+                    status_code=500, detail=f"Browser command failed: {e}"
+                )
+
+    # Outside lock -- handle crash with restart
+    if crashed:
+        browser_session["status"] = "closed"
+        browser_session["proc"] = None
+        if _retried:
+            raise HTTPException(
+                status_code=500,
+                detail="Browser crashed during command."
+            )
+        await browser_open()
+        return await _browser_cmd(cmd, _retried=True)
 
 
 def _describe_step(action: str, cmd: dict) -> str:
